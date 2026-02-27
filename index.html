@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="auth-box">
+        <h2>LinkUp</h2>
+        <form id="auth-form" style="width:100%; max-width:300px;">
+            <input id="user" class="input-field hidden" placeholder="Username">
+            <input id="email" class="input-field" type="email" placeholder="Email" required>
+            <input id="pass" class="input-field" type="password" placeholder="Password" required>
+            <button id="btn" class="btn btn-primary" style="width:100%">Login</button>
+        </form>
+        <p id="toggle" style="color:var(--primary); cursor:pointer; margin-top:15px;">Create Account</p>
+        <p id="error" style="color:red; display:none;"></p>
+    </div>
+
+    <script type="module">
+        console.log("Auth Script Loading..."); 
+
+        import { auth, db } from "./config.js";
+        import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { doc, setDoc, query, collection, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // 1. Prevent automatic redirect during sign-up
+        let isProcessingForm = false; 
+
+        // Redirect if ALREADY logged in (when they first open the app)
+        onAuthStateChanged(auth, u => { 
+            if(u && !isProcessingForm) {
+                window.location.href = "chats.html"; 
+            }
+        });
+
+        let isLogin = true;
+        const els = { 
+            user: document.getElementById('user'), 
+            btn: document.getElementById('btn'), 
+            toggle: document.getElementById('toggle'),
+            error: document.getElementById('error')
+        };
+
+        // Toggle Login / Signup
+        els.toggle.onclick = () => {
+            isLogin = !isLogin;
+            els.btn.innerText = isLogin ? "Login" : "Sign Up";
+            els.toggle.innerText = isLogin ? "Create Account" : "Back to Login";
+            els.user.classList.toggle('hidden', isLogin);
+            els.user.required = !isLogin;
+            els.error.style.display = 'none'; 
+        };
+
+        // Form Submit
+        document.getElementById('auth-form').onsubmit = async (e) => {
+            e.preventDefault();
+            els.error.style.display = 'none';
+            els.btn.disabled = true; 
+            els.btn.innerText = "Processing...";
+            
+            // Tell the app to wait for us to finish database writes
+            isProcessingForm = true; 
+
+            const email = document.getElementById('email').value;
+            const pass = document.getElementById('pass').value;
+
+            try {
+                if(isLogin) {
+                    await signInWithEmailAndPassword(auth, email, pass);
+                    window.location.href = "chats.html"; // Manual redirect after success
+                } else {
+                    const userVal = els.user.value.trim().toLowerCase();
+                    if(userVal.length < 3) throw new Error("Username must be at least 3 characters.");
+                    
+                    // Check if username is taken
+                    const q = query(collection(db, "users"), where("username", "==", userVal));
+                    if(!(await getDocs(q)).empty) throw new Error("Username is already taken!");
+                    
+                    // Create Account
+                    const cred = await createUserWithEmailAndPassword(auth, email, pass);
+                    
+                    // WAITS for the database to finish saving...
+                    await setDoc(doc(db, "users", cred.user.uid), { 
+                        username: userVal, 
+                        email: email, 
+                        uid: cred.user.uid, 
+                        avatar: userVal[0].toUpperCase() 
+                    });
+
+                    // NOW we redirect!
+                    window.location.href = "chats.html";
+                }
+            } catch(err) {
+                console.error("Auth Error:", err);
+                els.error.innerText = err.message;
+                els.error.style.display = 'block';
+                
+                els.btn.disabled = false; 
+                els.btn.innerText = isLogin ? "Login" : "Sign Up";
+                isProcessingForm = false; // Reset if it failed
+            }
+        };
+    </script>
+</body>
+</html>

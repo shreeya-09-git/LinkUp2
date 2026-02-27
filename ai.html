@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="page-container">
+        <div class="header">✨ Gemini AI</div>
+        
+        <div class="chat-interface">
+            <div id="ai-msgs" class="msgs">
+                <div class="msg received">Hello! I'm Gemini. How can I help you today?</div>
+            </div>
+            <form id="ai-form" class="input-area">
+                <input id="ai-inp" placeholder="Ask AI anything..." autocomplete="off">
+                <button class="btn btn-primary">✨</button>
+            </form>
+        </div>
+    </div>
+
+    <script type="module" src="nav.js"></script>
+    <script type="module">
+        import { GEMINI_API_KEY } from "./config.js";
+
+        const msgs = document.getElementById('ai-msgs');
+        
+        document.getElementById('ai-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const text = document.getElementById('ai-inp').value;
+            if(!text) return;
+
+            // User Msg
+            addMsg(text, 'sent');
+            document.getElementById('ai-inp').value = '';
+            
+            // Loading
+            const loadDiv = addMsg("Thinking...", 'received');
+
+            try {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text }] }] })
+                });
+                const data = await res.json();
+                loadDiv.remove(); // Remove loading text
+                
+                if(data.error) throw new Error(data.error.message);
+                const aiText = data.candidates[0].content.parts[0].text;
+                addMsg(aiText, 'received');
+            } catch(err) {
+                loadDiv.innerText = "Error: " + err.message;
+            }
+        };
+
+        function addMsg(text, type) {
+            const div = document.createElement('div');
+            div.className = `msg ${type}`;
+            // Handle markdown-style simple formatting
+            div.innerHTML = text.replace(/\n/g, '<br>');
+            msgs.appendChild(div);
+            msgs.scrollTop = msgs.scrollHeight;
+            return div;
+        }
+    </script>
+</body>
+</html>

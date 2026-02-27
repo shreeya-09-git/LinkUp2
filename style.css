@@ -1,0 +1,371 @@
+/* ==========================================
+   1. GLOBAL VARIABLES & RESETS
+   ========================================== */
+:root { 
+    --primary: #4f46e5; 
+    --primary-hover: #4338ca;
+    --bg: #f3f4f6; 
+    --white: #ffffff; 
+    --text-dark: #111827;
+    --text-muted: #6b7280;
+    --border: #e5e7eb;
+}
+
+body { 
+    font-family: 'Inter', sans-serif; 
+    background: var(--bg); 
+    margin: 0; 
+    color: var(--text-dark);
+    padding-bottom: 70px; /* Space for mobile bottom nav */
+}
+
+*, *::before, *::after { 
+    box-sizing: border-box; 
+}
+
+.hidden { 
+    display: none !important; 
+}
+
+.avatar img, .inner-avatar img { 
+    width: 100%; height: 100%; border-radius: 50%; object-fit: cover; 
+}
+
+/* ==========================================
+   2. SHARED LAYOUT & COMPONENTS
+   ========================================== */
+.page-container { 
+    max-width: 600px; 
+    margin: 0 auto; 
+    background: var(--white); 
+    min-height: 100vh; 
+    position: relative; 
+    box-shadow: 0 0 15px rgba(0,0,0,0.05);
+}
+
+.header { 
+    padding: 15px 20px; background: var(--white); border-bottom: 1px solid var(--border); 
+    position: sticky; top: 0; z-index: 100; font-weight: 700; font-size: 18px; 
+    display: flex; justify-content: space-between; align-items: center; 
+}
+
+.list-item { 
+    padding: 15px 20px; border-bottom: 1px solid #f9fafb; display: flex; 
+    align-items: center; cursor: pointer; transition: background 0.2s;
+}
+.list-item:hover { background: #f9fafb; }
+
+.avatar { 
+    width: 45px; height: 45px; background: #e0e7ff; color: var(--primary); 
+    border-radius: 50%; display: flex; align-items: center; justify-content: center; 
+    font-weight: bold; margin-right: 15px; flex-shrink: 0; 
+}
+
+.info { flex: 1; }
+.info h4 { margin: 0; font-size: 16px; color: var(--text-dark); }
+.info p { margin: 0; font-size: 13px; color: var(--text-muted); }
+
+/* Buttons & Inputs */
+.btn { padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: 0.2s;}
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+.btn:disabled { opacity: 0.7; cursor: not-allowed; }
+
+.input-field { 
+    width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; 
+    border-radius: 8px; font-size: 15px; outline: none;
+}
+.input-field:focus { border-color: var(--primary); }
+
+/* ==========================================
+   3. BOTTOM NAVIGATION BAR
+   ========================================== */
+.bottom-nav {
+    position: fixed; bottom: 0; left: 0; width: 100%; background: var(--white); 
+    border-top: 1px solid var(--border); display: flex; justify-content: space-around; 
+    padding: 10px 0; z-index: 9999; box-shadow: 0 -2px 10px rgba(0,0,0,0.03);
+}
+.nav-item { text-decoration: none; color: #9ca3af; display: flex; flex-direction: column; align-items: center; transition: 0.2s;}
+.nav-icon { font-size: 22px; margin-bottom: 4px; }
+.nav-label { font-size: 12px; font-weight: 500; }
+.nav-item.active { color: var(--primary); }
+.nav-item.active .nav-icon { transform: scale(1.1); }
+
+/* ==========================================
+   4. AUTHENTICATION PAGE
+   ========================================== */
+.auth-box { 
+    height: 100vh; 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    justify-content: center; 
+    padding: 20px; 
+}
+
+/* ==========================================
+   5. CHATS & MESSAGES
+   ========================================== */
+.chat-interface { display: flex; flex-direction: column; }
+.msgs { flex: 1; overflow-y: auto; padding: 15px 20px; display: flex; flex-direction: column; gap: 12px; background: #f9fafb;}
+.msg { max-width: 75%; padding: 10px 14px; border-radius: 12px; word-wrap: break-word; font-size: 0.95rem; line-height: 1.4;}
+.msg.sent { align-self: flex-end; background: var(--primary); color: white; border-bottom-right-radius: 2px;}
+.msg.received { align-self: flex-start; background: var(--white); border: 1px solid var(--border); color: var(--text-dark); border-bottom-left-radius: 2px;}
+.msg.deleted { background: transparent; border: 1px dashed #ccc; color: #999; font-style: italic; }
+
+.input-area { 
+    padding: 10px 15px; border-top: 1px solid var(--border); display: flex; gap: 10px; 
+    width: 100%; background: var(--white); align-items: center;
+}
+.input-area input { flex: 1; padding: 12px 15px; border-radius: 24px; border: 1px solid #ddd; outline: none;}
+
+.unread-badge { width: 12px; height: 12px; background-color: #ef4444; border-radius: 50%; margin-left: auto; box-shadow: 0 0 0 2px white;}
+.btn-attach { background: none; border: none; font-size: 22px; cursor: pointer; padding: 0 5px; color: var(--text-muted);}
+.btn-attach:hover { color: var(--primary); }
+.chat-media { 
+    max-width: 200px; /* Forces the image/video to be small */
+    max-height: 250px; /* Prevents super tall images from taking over the screen */
+    width: auto;
+    height: auto;
+    border-radius: 8px; 
+    margin-top: 5px; 
+    margin-bottom: 5px; 
+    display: block;
+    object-fit: cover; /* Keeps the edges looking clean and proportional */
+}
+
+/* Optional: Make it slightly larger on Desktop mode */
+@media (min-width: 768px) {
+    .chat-media {
+        max-width: 250px;
+        max-height: 300px;
+    }
+}
+/* Typing Indicator Animation */
+.typing-indicator span { display: inline-block; width: 6px; height: 6px; background: #9ca3af; border-radius: 50%; margin: 0 2px; animation: bounce 1.4s infinite; }
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+
+/* ==========================================
+   6. STORIES
+   ========================================== */
+.stories-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+.stories-scroll::-webkit-scrollbar { display: none; }
+.insta-ring { width: 65px; height: 65px; border-radius: 50%; background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); padding: 3px; cursor: pointer; flex-shrink: 0;}
+.insta-ring .inner-avatar { background: white; width: 100%; height: 100%; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #333; font-size: 20px; overflow: hidden;}
+.story-user-text { font-size: 11px; text-align: center; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65px;}
+.avatar.has-story { border: 2px solid #e1306c; padding: 2px; background-clip: content-box;}
+
+/* Story Viewer Modal */
+#story-viewer { position: fixed; inset: 0; background: #111; z-index: 100000; display: flex; flex-direction: column;}
+.progress-container { display: flex; gap: 4px; padding: 15px 10px 10px 10px; }
+.progress-bar { flex: 1; height: 2px; background: rgba(255,255,255,0.3); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; width: 0%; background: white; }
+.viewer-header { display: flex; align-items: center; padding: 0 15px 10px 15px; color: white; justify-content: space-between; z-index: 10; }
+.viewer-user-info { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 14px; }
+.close-viewer { background: none; border: none; color: white; font-size: 28px; cursor: pointer; }
+.viewer-content { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.viewer-content img, .viewer-content video { max-width: 100%; max-height: 100%; object-fit: contain; }
+.viewer-text { position: absolute; bottom: 40px; color: white; text-align: center; width: 100%; text-shadow: 1px 1px 4px rgba(0,0,0,0.8); font-size: 16px; padding: 0 20px; z-index: 10;}
+.tap-left, .tap-right { position: absolute; top: 0; bottom: 80px; width: 50%; z-index: 5; }
+.tap-left { left: 0; } .tap-right { right: 0; }
+
+.viewer-footer { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; align-items: center; padding: 0 15px; gap: 15px; z-index: 50;}
+#story-reply-input { flex: 1; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.6); border-radius: 24px; padding: 12px 15px; color: white; outline: none; font-size: 14px;}
+#story-reply-input::placeholder { color: rgba(255,255,255,0.8); }
+.story-action-btn { background: none; border: none; color: white; font-size: 24px; cursor: pointer; transition: transform 0.2s; padding: 0;}
+.story-action-btn.liked { color: #ef4444; }
+
+.story-ref-box { border-left: 3px solid var(--primary); margin-bottom: 8px; background: rgba(0,0,0,0.05); border-radius: 4px 8px 8px 4px; padding: 6px 10px; font-size: 12px; display: flex; align-items: center; gap: 10px;}
+.story-ref-box img, .story-ref-box video { max-width: 35px; max-height: 50px; border-radius: 4px; object-fit: cover;}
+
+/* ==========================================
+   7. PROFILE PAGE
+   ========================================== */
+.profile-header { text-align: center; padding: 30px 20px; background: white; border-bottom: 1px solid var(--border); }
+.profile-avatar-wrapper { position: relative; display: inline-block; margin-bottom: 15px; }
+.profile-avatar { width: 100px; height: 100px; border-radius: 50%; background: #e0e7ff; color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: bold; overflow: hidden; border: 3px solid var(--primary); }
+.edit-avatar-btn { position: absolute; bottom: 0; right: 0; background: var(--primary); color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 2px solid white; font-size: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+.profile-form { padding: 20px; background: white; }
+.form-group { margin-bottom: 20px; }
+.form-group label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 8px; font-weight: 600; }
+.form-group input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; outline: none; }
+
+/* --- NOTIFICATIONS STYLES --- */
+.notif-section-title { padding: 15px 20px 5px; font-size: 14px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+
+
+/* ==========================================
+   8. RESPONSIVE DESIGN (DESKTOP MODE)
+   ========================================== */
+
+/* Mobile Base Styling */
+@media (max-width: 767px) {
+    /* Hide halves of the chat interface depending on what is active */
+    .chats-container.chat-active #left-pane { display: none !important; }
+    .chats-container:not(.chat-active) #conversation { display: none !important; }
+    
+    .chats-container #conversation { height: calc(100vh - 70px); }
+    .input-area { position: fixed; bottom: 60px; left: 0; right: 0; margin: 0 auto; max-width: 600px; }
+    #no-chat-placeholder { display: none !important; }
+}
+
+/* Desktop App Window Styling */
+@media (min-width: 768px) {
+    body { 
+        padding-bottom: 0; 
+        padding-left: 80px; /* Offset for Side Nav */
+        background: #e0e7ff; /* Soft blue background for the desktop */
+        display: flex; 
+        align-items: center; 
+        justify-content: center;
+        min-height: 100vh;
+    }
+    
+    /* Center all pages like app windows */
+    .page-container { 
+        width: 95%; 
+        max-width: 1200px; 
+        height: 90vh; 
+        margin: auto; 
+        border-radius: 16px; 
+        box-shadow: 0 10px 40px rgba(0,0,0,0.15); 
+        overflow: hidden; 
+    }
+
+    /* Transform Bottom Nav into a Side Bar */
+    .bottom-nav { 
+        top: 0; 
+        left: 0; 
+        bottom: auto; 
+        width: 80px; 
+        height: 100vh; 
+        flex-direction: column; 
+        justify-content: center; 
+        gap: 30px; 
+        border-top: none; 
+        border-right: 1px solid var(--border); 
+        box-shadow: 2px 0 10px rgba(0,0,0,0.05); 
+    }
+    .nav-label { font-size: 10px; margin-top: 5px; }
+
+    /* --- THE SPLIT PANE MAGIC (LEFT & RIGHT) --- */
+    .chats-container { 
+        display: flex !important; 
+        flex-direction: row !important; /* Forces side-by-side */
+    }
+    
+    /* Chat Tab (Left Side) */
+    .left-pane { 
+        width: 350px; 
+        min-width: 350px; 
+        border-right: 1px solid var(--border); 
+        display: flex !important; 
+        flex-direction: column; 
+        overflow-y: auto; 
+        background: white; 
+    }
+    
+    /* Chat Window (Right Side) */
+    .right-pane { 
+        flex: 1; /* Takes up the rest of the available space */
+        display: flex !important; 
+        flex-direction: column; 
+        background: #f0f2f5; 
+    }
+    
+    /* Hide the mobile back button on desktop */
+    .chats-container .header #back { display: none !important; }
+
+    .msgs { background: transparent; }
+
+    /* Lock the input bar to the bottom of the right pane */
+    .input-area { 
+        position: relative; bottom: 0; 
+        width: 100%; max-width: none; background: white; 
+    }
+
+    /* Keep non-chat pages (Profile, Alerts) neatly centered */
+    .page-container:not(.chats-container) { 
+        display: block; max-width: 600px; overflow-y: auto; background: white;
+    }
+}
+
+/* ==========================================
+   9. PRODUCTION POLISH (Timestamps, Badges, Deletes)
+   ========================================== */
+.msg-time { 
+    font-size: 10px; opacity: 0.6; margin-top: 4px; 
+    display: block; text-align: right; 
+}
+
+.story-delete-btn { 
+    position: absolute; top: 15px; left: 15px; font-size: 18px; 
+    color: white; background: rgba(0,0,0,0.5); border: none; 
+    border-radius: 50%; width: 36px; height: 36px; cursor: pointer; 
+    z-index: 100; display: flex; align-items: center; justify-content: center; 
+    transition: 0.2s;
+}
+.story-delete-btn:hover { background: rgba(239, 68, 68, 0.9); }
+
+.nav-item { position: relative; }
+.nav-badge { 
+    position: absolute; top: -5px; right: 20px; background: #ef4444; 
+    color: white; font-size: 10px; font-weight: bold; padding: 2px 6px; 
+    border-radius: 10px; border: 2px solid white; display: none; 
+}
+@media (min-width: 768px) { 
+    .nav-badge { right: 15px; top: 0; border-width: 1px; } 
+}
+
+/* ==========================================
+   10. SWIPE TO REPLY UI
+   ========================================== */
+.reply-preview-box { 
+    display: none; padding: 10px 15px; background: #f3f4f6; 
+    border-left: 4px solid var(--primary); border-top: 1px solid var(--border); 
+    font-size: 13px; position: relative; width: 100%; box-sizing: border-box;
+}
+.reply-preview-close { 
+    position: absolute; right: 15px; top: 10px; cursor: pointer; 
+    color: #999; font-weight: bold; font-size: 16px; 
+}
+.quoted-msg { 
+    background: rgba(0,0,0,0.05); border-left: 3px solid var(--primary); 
+    padding: 6px 10px; border-radius: 4px; font-size: 12px; 
+    margin-bottom: 6px; opacity: 0.8; 
+}
+.msg {
+    /* Required to prevent the swipe from making the screen scroll sideways */
+    touch-action: pan-y; 
+}
+
+/* ==========================================
+   11. MESSAGE CONTEXT MENU & EDITING
+   ========================================== */
+.msg-menu {
+    position: fixed; background: white; border: 1px solid var(--border);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15); border-radius: 12px;
+    z-index: 100000; display: flex; flex-direction: column; overflow: hidden;
+    min-width: 140px; transform: scale(0.95); opacity: 0; transition: 0.1s ease-out;
+    pointer-events: none;
+}
+.msg-menu.active {
+    transform: scale(1); opacity: 1; pointer-events: auto;
+}
+.msg-menu button {
+    background: none; border: none; padding: 12px 15px; text-align: left;
+    font-size: 14px; cursor: pointer; color: var(--text-dark); font-weight: 500;
+    border-bottom: 1px solid #f3f4f6; transition: background 0.2s;
+}
+.msg-menu button:last-child { border-bottom: none; }
+.msg-menu button:hover { background: #f9fafb; }
+.msg-menu button.delete-btn { color: #ef4444; }
+.msg-menu button.delete-btn:hover { background: #fef2f2; }
+
+.editing-banner {
+    background: #e0e7ff; color: var(--primary); padding: 8px 15px;
+    font-size: 12px; font-weight: 600; display: none; justify-content: space-between;
+    border-top: 1px solid var(--border); align-items: center;
+}

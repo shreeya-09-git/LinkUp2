@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chats - FireChat Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Dropdown Menu Styles */
+        .header-dropdown {
+            position: absolute; top: 50px; right: 15px; background: white; 
+            border: 1px solid var(--border); border-radius: 8px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; 
+            flex-direction: column; min-width: 140px; z-index: 1000; overflow: hidden;
+        }
+        .header-dropdown button {
+            padding: 12px 15px; background: none; border: none; 
+            border-bottom: 1px solid #f3f4f6; text-align: left; 
+            cursor: pointer; font-size: 14px; font-family: 'Inter', sans-serif;
+            color: var(--text-dark); transition: background 0.2s;
+        }
+        .header-dropdown button:hover { background: #f9fafb; }
+        .header-dropdown button:last-child { border-bottom: none; }
+        .header-dropdown button.danger { color: #ef4444; }
+        .header-dropdown button.danger:hover { background: #fef2f2; }
+    </style>
+</head>
+<body>
+    <div class="page-container chats-container">
+        <div id="left-pane" class="left-pane">
+            <div class="header">Messages</div>
+            <div class="stories-scroll" id="stories-row" style="background:white; border-bottom:1px solid #eee; display:flex; gap:15px; padding:15px; overflow-x:auto;"></div>
+            <div id="chat-list"></div>
+        </div>
+
+        <div id="conversation" class="right-pane">
+            <div class="header" style="position:relative;">
+                <button id="back" class="hidden btn" style="font-size:20px; background:none; border:none; padding-right:15px;">←</button>
+                <div id="header-avatar" class="avatar hidden" style="width:30px; height:30px; font-size:14px; margin-right:10px;">?</div>
+                <span id="chat-name">Select a chat to start messaging</span>
+                <div style="flex:1"></div>
+                
+                <div id="chat-options-wrapper" class="hidden" style="position:relative; display:flex; align-items:center;">
+                    <button id="chat-options-btn" class="btn" style="font-size:22px; background:none; border:none; color:var(--text-dark); cursor:pointer; padding: 0 5px;" onclick="toggleChatMenu(event)">⋮</button>
+                    
+                    <div id="chat-options-menu" class="header-dropdown hidden">
+                        <button onclick="alert('Search feature coming soon!')">🔍 Search</button>
+                        <button onclick="alert('Pin feature coming soon!')">📌 Pin Chat</button>
+                        <button class="danger" onclick="clearChat()">🗑️ Clear Chat</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="no-chat-placeholder" style="flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column; color:#999;">
+                <div style="font-size: 60px; margin-bottom: 20px;">💬</div>
+                <h3 style="color:#333; margin:0;">FireChat for Web</h3>
+                <p>Select a friend from the left to start messaging.</p>
+            </div>
+
+            <div id="active-chat-interface" class="hidden" style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+                <div id="msgs" class="msgs" style="flex:1;"></div>
+                
+                <div id="reply-preview" class="reply-preview-box">
+                    <div style="font-weight: 600; color: var(--primary); margin-bottom: 2px;" id="reply-preview-name">Name</div>
+                    <div id="reply-preview-text" style="color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90%;">Text</div>
+                    <div class="reply-preview-close" onclick="cancelReply()">✕</div>
+                </div>
+
+                <div id="edit-banner" class="editing-banner">
+                    <span>✏️ Editing message...</span>
+                    <span style="cursor:pointer; font-size: 16px;" onclick="cancelEdit()">&times;</span>
+                </div>
+
+                <form id="form" class="input-area">
+                    <button type="button" id="attach-btn" class="btn-attach">📎</button>
+                    <input type="file" id="chat-file-input" accept="image/*, video/*" hidden>
+                    <input id="inp" placeholder="Message..." autocomplete="off" style="flex:1;">
+                    <button type="submit" id="send-btn" class="btn btn-primary">➤</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="msg-menu" class="msg-menu">
+        <button id="menu-reply">↩️ Reply</button>
+        <button id="menu-edit" class="hidden">✏️ Edit</button>
+        <button id="menu-delete" class="delete-btn hidden">🗑️ Delete</button>
+    </div>
+
+    <div id="story-viewer" class="hidden">
+        <div class="progress-container" id="progress-container"></div>
+        <div class="viewer-header">
+            <div class="viewer-user-info">
+                <div id="viewer-avatar" style="width:30px; height:30px; background:white; color:black; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;"></div>
+                <span id="viewer-username">Username</span>
+                <span id="viewer-time" style="color:#aaa; font-weight:400; font-size:12px; margin-left:8px;"></span>
+            </div>
+            <button class="close-viewer" onclick="closeViewer()">&times;</button>
+        </div>
+        <div class="viewer-content">
+            <div class="tap-left" onclick="prevStory()"></div>
+            <div class="tap-right" onclick="nextStory()"></div>
+            <div id="media-container" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;"></div>
+            <div class="viewer-text" id="viewer-caption" style="bottom: 90px;"></div>
+            <div id="story-delete-container"></div>
+            <div class="viewer-footer" id="viewer-footer">
+                <input type="text" id="story-reply-input" placeholder="Reply to story..." autocomplete="off">
+                <button id="story-send-btn" class="story-action-btn" onclick="sendStoryReply()">➤</button>
+                <button id="story-like-btn" class="story-action-btn" onclick="likeStory()">🤍</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="media-viewer" class="hidden" style="position:fixed; inset:0; background:black; z-index:100001; display:flex; align-items:center; justify-content:center; flex-direction:column; overflow:hidden;">
+        <button onclick="closeMedia()" style="position:absolute; top:20px; right:20px; background:rgba(0,0,0,0.5); border:none; color:white; font-size:30px; width:40px; height:40px; border-radius:50%; cursor:pointer; z-index:10; display:flex; align-items:center; justify-content:center;">&times;</button>
+        <div id="media-viewer-content" style="width:100vw; height:100vh; display:flex; justify-content:center; align-items:center;"></div>
+    </div>
+
+    <script type="module" src="nav.js"></script>
+    
+    <script type="module">
+        import { auth, db, GEMINI_API_KEY } from "./config.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc, updateDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const CLOUD_NAME = "divihazs2"; 
+        const UPLOAD_PRESET = "linkup_media"; 
+
+        let currentUser = null;
+        let currentChatId = null;
+        let activeChatUser = null;
+        let unsubMessages = null;
+        let unsubTyping = null;
+        let typingTimeout = null;
+        let chatBadgeUnsubs = {}; 
+
+        let groupedStories = {}; 
+        let currentViewerUIDs = []; 
+        let myFriendUids = []; 
+        let activeUserIndex = 0;
+        let activeStoryIndex = 0;
+        let storyTimer = null;
+        
+        let replyingTo = null; 
+        let editingMsgId = null; 
+
+        onAuthStateChanged(auth, u => {
+            if(!u) window.location.href = "index.html";
+            else {
+                currentUser = u;
+                loadFriendsList(); 
+                loadStories();     
+                const params = new URLSearchParams(window.location.search);
+                if(params.get('uid')) autoStartChat(params.get('uid'));
+            }
+        });
+
+        // --- HEADER 3-DOTS MENU LOGIC ---
+        window.toggleChatMenu = (e) => {
+            e.stopPropagation();
+            document.getElementById('chat-options-menu').classList.toggle('hidden');
+        };
+
+        // Close menus when clicking outside
+        document.addEventListener('click', (e) => {
+            // Close message bubbles menu
+            if (!e.target.closest('.msg')) {
+                document.getElementById('msg-menu').classList.remove('active');
+            }
+            // Close header 3-dots menu
+            if (!e.target.closest('#chat-options-wrapper')) {
+                const chatMenu = document.getElementById('chat-options-menu');
+                if(chatMenu && !chatMenu.classList.contains('hidden')) {
+                    chatMenu.classList.add('hidden');
+                }
+            }
+        });
+
+        // --- CLEAR CHAT LOGIC ---
+        window.clearChat = async () => {
+            document.getElementById('chat-options-menu').classList.add('hidden'); // Close menu
+            if (!currentChatId) return;
+            if (confirm("Are you sure you want to completely clear this chat? This cannot be undone.")) {
+                try {
+                    const q = query(collection(db, "chats", currentChatId, "messages"));
+                    const snap = await getDocs(q);
+                    snap.forEach(async (d) => {
+                        await deleteDoc(doc(db, "chats", currentChatId, "messages", d.id));
+                    });
+                } catch (e) {
+                    console.error("Error clearing chat: ", e);
+                    alert("Failed to clear chat.");
+                }
+            }
+        };
+
+        // --- MESSAGE CONTEXT MENU LOGIC ---
+        window.openMsgMenu = (e, id, msg, isMe) => {
+            if (msg.deleted) return; 
+
+            const menu = document.getElementById('msg-menu');
+            menu.classList.add('active');
+            
+            let x = e.clientX || (e.touches && e.touches[0].clientX) || 50;
+            let y = e.clientY || (e.touches && e.touches[0].clientY) || window.innerHeight / 2;
+            
+            menu.style.left = Math.min(x, window.innerWidth - 150) + 'px';
+            menu.style.top = Math.min(y, window.innerHeight - 150) + 'px';
+
+            document.getElementById('menu-reply').onclick = () => {
+                let previewText = msg.text || (msg.mediaUrl ? "📸 Media" : "Story reply");
+                window.initiateReply(previewText, isMe ? "You" : activeChatUser.username);
+                menu.classList.remove('active');
+            };
+
+            const editBtn = document.getElementById('menu-edit');
+            if (isMe && msg.text && !msg.mediaUrl) {
+                editBtn.classList.remove('hidden');
+                editBtn.onclick = () => {
+                    window.startEdit(id, msg.text);
+                    menu.classList.remove('active');
+                };
+            } else {
+                editBtn.classList.add('hidden');
+            }
+
+            const deleteBtn = document.getElementById('menu-delete');
+            if (isMe) {
+                deleteBtn.classList.remove('hidden');
+                deleteBtn.onclick = () => {
+                    window.del(id);
+                    menu.classList.remove('active');
+                };
+            } else {
+                deleteBtn.classList.add('hidden');
+            }
+        };
+
+        window.startEdit = (id, text) => {
+            editingMsgId = id;
+            document.getElementById('inp').value = text;
+            document.getElementById('inp').focus();
+            document.getElementById('edit-banner').style.display = 'flex';
+        };
+
+        window.cancelEdit = () => {
+            editingMsgId = null;
+            document.getElementById('inp').value = '';
+            document.getElementById('edit-banner').style.display = 'none';
+        };
+
+        // --- CHAT MEDIA VIEWER LOGIC ---
+        window.openMedia = (url, type, e) => {
+            e.stopPropagation(); 
+            const content = document.getElementById('media-viewer-content');
+            if (type === 'video') {
+                content.innerHTML = `<video src="${url}" controls autoplay playsinline style="width:100vw; height:100vh; object-fit:contain; outline:none;"></video>`;
+            } else {
+                content.innerHTML = `<img src="${url}" style="width:100vw; height:100vh; object-fit:contain;">`;
+            }
+            document.getElementById('media-viewer').classList.remove('hidden');
+        };
+
+        window.closeMedia = () => {
+            document.getElementById('media-viewer-content').innerHTML = ''; 
+            document.getElementById('media-viewer').classList.add('hidden');
+        };
+
+        // --- REPLY UI LOGIC ---
+        window.initiateReply = (text, name) => {
+            replyingTo = { text, name };
+            document.getElementById('reply-preview-name').innerText = name;
+            document.getElementById('reply-preview-text').innerText = text;
+            document.getElementById('reply-preview').style.display = 'block';
+            document.getElementById('inp').focus(); 
+        };
+
+        window.cancelReply = () => {
+            replyingTo = null;
+            document.getElementById('reply-preview').style.display = 'none';
+        };
+
+        document.getElementById('story-reply-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); window.sendStoryReply(); }
+        });
+
+        // ==========================================
+        // 1. FRIEND LIST
+        // ==========================================
+        function loadFriendsList() {
+            onSnapshot(collection(db, "users", currentUser.uid, "friends"), async (snap) => {
+                const listEl = document.getElementById('chat-list');
+                listEl.innerHTML = '';
+                myFriendUids = []; 
+                
+                for (let d of snap.docs) {
+                    const f = d.data();
+                    myFriendUids.push(f.uid); 
+                    
+                    const userProfile = await getDoc(doc(db, "users", f.uid));
+                    const liveData = userProfile.exists() ? userProfile.data() : f;
+                    
+                    let hasStoryClass = '';
+                    if (liveData.lastStoryAt && Date.now() - liveData.lastStoryAt.toMillis() < 24 * 60 * 60 * 1000) {
+                        hasStoryClass = 'has-story';
+                    }
+
+                    const liveAvatar = liveData.avatar;
+                    const avatarHTML = liveAvatar && liveAvatar.startsWith('http') ? `<img src="${liveAvatar}">` : (liveAvatar || f.username[0].toUpperCase());
+
+                    const div = document.createElement('div');
+                    div.className = 'list-item';
+                    div.innerHTML = `
+                        <div class="avatar ${hasStoryClass}">${avatarHTML}</div>
+                        <div class="info"><h4>${f.username}</h4></div>
+                        <div id="badge-${f.uid}" class="unread-badge hidden"></div>
+                    `;
+                    div.onclick = () => { f.liveAvatar = liveAvatar; startChat(f); };
+                    listEl.appendChild(div);
+
+                    const uids = [currentUser.uid, f.uid].sort();
+                    const chatId = uids.join('_');
+                    
+                    if(chatBadgeUnsubs[chatId]) chatBadgeUnsubs[chatId]();
+                    chatBadgeUnsubs[chatId] = onSnapshot(doc(db, "chats", chatId), (chatSnap) => {
+                        const badge = document.getElementById(`badge-${f.uid}`);
+                        if(!badge || !chatSnap.exists()) return;
+                        const chatData = chatSnap.data();
+                        
+                        if(chatData.unread && chatData.lastMessageSender !== currentUser.uid && currentChatId !== chatId) badge.classList.remove('hidden');
+                        else {
+                            badge.classList.add('hidden');
+                            if(chatData.unread && chatData.lastMessageSender !== currentUser.uid && currentChatId === chatId) updateDoc(doc(db, "chats", chatId), { unread: false });
+                        }
+                    });
+                }
+                renderStoryRow(); 
+            });
+        }
+
+        // ==========================================
+        // 2. STORIES & REPLIES
+        // ==========================================
+        function loadStories() {
+            onSnapshot(query(collection(db, "stories"), orderBy("timestamp", "asc")), snap => {
+                groupedStories = {};
+                const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
+                snap.forEach(d => {
+                    const s = d.data();
+                    if(s.timestamp && s.timestamp.toMillis() > twentyFourHoursAgo) {
+                        if (!groupedStories[s.uid]) groupedStories[s.uid] = [];
+                        groupedStories[s.uid].push({ id: d.id, ...s }); 
+                    }
+                });
+                renderStoryRow();
+            });
+        }
+
+        function renderStoryRow() {
+            const row = document.getElementById('stories-row');
+            if(!row) return;
+            row.innerHTML = `<div style="display:flex; flex-direction:column; align-items:center; cursor:pointer;" onclick="postStatus()"><div class="insta-ring" style="background: #e5e7eb;"><div class="inner-avatar" style="color:#4f46e5; font-size:28px;">+</div></div><div class="story-user-text">Your Story</div></div>`;
+            currentViewerUIDs = Object.keys(groupedStories).filter(uid => uid === currentUser.uid || myFriendUids.includes(uid));
+
+            currentViewerUIDs.forEach((uid, index) => {
+                const latestStory = groupedStories[uid][groupedStories[uid].length - 1]; 
+                const ringStyle = uid === currentUser.uid ? 'background: #ccc;' : '';
+                const avatarHTML = latestStory.avatar && latestStory.avatar.startsWith('http') ? `<img src="${latestStory.avatar}">` : latestStory.username[0].toUpperCase();
+
+                row.innerHTML += `<div style="display:flex; flex-direction:column; align-items:center; cursor:pointer;" onclick="openViewer(${index})"><div class="insta-ring" style="${ringStyle}"><div class="inner-avatar">${avatarHTML}</div></div><div class="story-user-text">${uid === currentUser.uid ? 'You' : latestStory.username}</div></div>`;
+            });
+        }
+
+        const storyFileInput = document.createElement('input'); storyFileInput.type = 'file'; storyFileInput.accept = 'image/*, video/*';
+        window.postStatus = () => { storyFileInput.click(); };
+
+        storyFileInput.onchange = async (e) => {
+            const file = e.target.files[0]; const text = prompt("Add a caption to your story:");
+            if (!file && !text) return;
+
+            let mediaUrl = null;
+            if (file) {
+                alert("Uploading story... please wait.");
+                const formData = new FormData(); formData.append('file', file); formData.append('upload_preset', UPLOAD_PRESET);
+                try {
+                    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`, { method: 'POST', body: formData });
+                    mediaUrl = (await res.json()).secure_url; 
+                } catch (err) { return alert("Failed to upload media."); }
+            }
+
+            const myData = (await getDoc(doc(db, "users", currentUser.uid))).data();
+            await addDoc(collection(db, "stories"), { uid: currentUser.uid, text: text || "", mediaUrl: mediaUrl, timestamp: serverTimestamp(), username: currentUser.email.split('@')[0], avatar: myData.avatar || null });
+            await updateDoc(doc(db, "users", currentUser.uid), { lastStoryAt: serverTimestamp() });
+            alert("Story posted!"); storyFileInput.value = ''; 
+        };
+
+        window.openViewer = (userIndex) => { document.getElementById('story-viewer').classList.remove('hidden'); activeUserIndex = userIndex; activeStoryIndex = 0; playCurrentStory(); };
+        window.closeViewer = () => { document.getElementById('story-viewer').classList.add('hidden'); clearTimeout(storyTimer); };
+        window.nextStory = () => { clearTimeout(storyTimer); if (activeStoryIndex < groupedStories[currentViewerUIDs[activeUserIndex]].length - 1) { activeStoryIndex++; playCurrentStory(); } else if (activeUserIndex < currentViewerUIDs.length - 1) { activeUserIndex++; activeStoryIndex = 0; playCurrentStory(); } else closeViewer(); };
+        window.prevStory = () => { clearTimeout(storyTimer); if (activeStoryIndex > 0) { activeStoryIndex--; playCurrentStory(); } else if (activeUserIndex > 0) { activeUserIndex--; activeStoryIndex = groupedStories[currentViewerUIDs[activeUserIndex]].length - 1; playCurrentStory(); } else playCurrentStory(); };
+
+        window.deleteStory = async (storyId) => {
+            if(confirm("Delete this story?")) {
+                await deleteDoc(doc(db, "stories", storyId));
+                const myStories = groupedStories[currentUser.uid] || [];
+                const remainingStories = myStories.filter(s => s.id !== storyId);
+                if (remainingStories.length > 0) await updateDoc(doc(db, "users", currentUser.uid), { lastStoryAt: remainingStories[remainingStories.length - 1].timestamp });
+                else await updateDoc(doc(db, "users", currentUser.uid), { lastStoryAt: null });
+                closeViewer();
+            }
+        };
+
+        function playCurrentStory() {
+            const userUid = currentViewerUIDs[activeUserIndex]; const story = groupedStories[userUid][activeStoryIndex];
+            const footer = document.getElementById('viewer-footer'); const delContainer = document.getElementById('story-delete-container');
+            
+            if (userUid === currentUser.uid) { footer.classList.add('hidden'); delContainer.innerHTML = `<button class="story-delete-btn" onclick="deleteStory('${story.id}')">🗑️</button>`; } 
+            else { footer.classList.remove('hidden'); delContainer.innerHTML = ''; document.getElementById('story-like-btn').className = 'story-action-btn'; document.getElementById('story-like-btn').innerText = '🤍'; }
+
+            document.getElementById('viewer-avatar').innerHTML = story.avatar && story.avatar.startsWith('http') ? `<img src="${story.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : story.username[0].toUpperCase();
+            document.getElementById('viewer-username').innerText = story.username;
+            
+            const diffMins = Math.floor((Date.now() - story.timestamp.toMillis()) / 60000);
+            document.getElementById('viewer-time').innerText = diffMins > 60 ? Math.floor(diffMins/60) + 'h' : diffMins + 'm';
+
+            const container = document.getElementById('progress-container'); container.innerHTML = '';
+            for(let i=0; i<groupedStories[userUid].length; i++) container.innerHTML += `<div class="progress-bar"><div id="prog-${i}" class="progress-fill" style="width:${i < activeStoryIndex ? "100%" : "0%"};"></div></div>`;
+
+            document.getElementById('viewer-caption').innerText = story.text || "";
+            const mediaContainer = document.getElementById('media-container');
+            
+            if (story.mediaUrl) {
+                if(story.mediaUrl.match(/\.(mp4|webm|ogg|mov)$/i)) mediaContainer.innerHTML = `<video src="${story.mediaUrl}" autoplay playsinline style="max-width:100%; max-height:100%;"></video>`;
+                else mediaContainer.innerHTML = `<img src="${story.mediaUrl}">`;
+            } else mediaContainer.innerHTML = `<div style="width:100%; height:100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"></div>`;
+
+            setTimeout(() => { const currentBar = document.getElementById(`prog-${activeStoryIndex}`); if(currentBar) { currentBar.style.transition = "width 5s linear"; currentBar.style.width = "100%"; } }, 50);
+            storyTimer = setTimeout(nextStory, 5000);
+        }
+
+        window.likeStory = async () => {
+            const userUid = currentViewerUIDs[activeUserIndex]; const btn = document.getElementById('story-like-btn');
+            if (userUid === currentUser.uid || btn.classList.contains('liked')) return; 
+            btn.innerText = '❤️'; btn.classList.add('liked');
+            await addDoc(collection(db, "notifications"), { type: 'story_like', from: currentUser.uid, to: userUid, timestamp: serverTimestamp() });
+        };
+
+        window.sendStoryReply = async () => {
+            const userUid = currentViewerUIDs[activeUserIndex]; const input = document.getElementById('story-reply-input'); const text = input.value.trim();
+            if(!text || userUid === currentUser.uid) return; input.value = ''; 
+            const story = groupedStories[userUid][activeStoryIndex]; const uids = [currentUser.uid, userUid].sort(); const chatId = uids.join('_');
+            
+            await setDoc(doc(db, "chats", chatId), { participants: uids }, { merge: true });
+            await addDoc(collection(db, "chats", chatId, "messages"), { text: text, storyRefUrl: story.mediaUrl || null, storyRefText: story.text || null, senderId: currentUser.uid, createdAt: serverTimestamp(), deleted: false });
+            await setDoc(doc(db, "chats", chatId), { lastMessageSender: currentUser.uid, unread: true }, { merge: true }); alert("Reply sent to " + story.username + "!");
+        };
+
+        // ==========================================
+        // 3. CHAT LOGIC
+        // ==========================================
+
+        async function autoStartChat(targetUid) {
+            if (targetUid === 'gemini-bot') { startChat({ uid: 'gemini-bot', username: 'Gemini AI', avatar: '✨' }); return; }
+            const friendDoc = await getDoc(doc(db, "users", currentUser.uid, "friends", targetUid));
+            if(friendDoc.exists()) startChat(friendDoc.data());
+        }
+
+        async function startChat(friend) {
+            activeChatUser = friend;
+            document.querySelector('.chats-container').classList.add('chat-active');
+            document.getElementById('no-chat-placeholder').classList.add('hidden');
+            document.getElementById('active-chat-interface').classList.remove('hidden');
+            document.getElementById('back').classList.remove('hidden');
+            document.getElementById('header-avatar').classList.remove('hidden');
+            
+            // SHOW THE 3-DOTS WRAPPER INSTEAD OF THE OLD BUTTON
+            document.getElementById('chat-options-wrapper').classList.remove('hidden'); 
+            
+            document.getElementById('header-avatar').innerHTML = friend.liveAvatar && friend.liveAvatar.startsWith('http') ? `<img src="${friend.liveAvatar}">` : (friend.liveAvatar || friend.username[0].toUpperCase());
+            document.getElementById('chat-name').innerText = friend.username;
+
+            const uids = [currentUser.uid, friend.uid].sort(); currentChatId = uids.join('_');
+            
+            await setDoc(doc(db, "chats", currentChatId), { participants: uids, unread: false }, { merge: true });
+            loadMessages(); if(friend.uid !== 'gemini-bot') listenForTyping();
+        }
+
+        document.getElementById('back').onclick = () => {
+            document.querySelector('.chats-container').classList.remove('chat-active');
+            document.getElementById('no-chat-placeholder').classList.remove('hidden');
+            document.getElementById('active-chat-interface').classList.add('hidden');
+            document.getElementById('back').classList.add('hidden');
+            document.getElementById('header-avatar').classList.add('hidden');
+            
+            // HIDE THE 3-DOTS WRAPPER AND ANY OPEN MENU
+            document.getElementById('chat-options-wrapper').classList.add('hidden'); 
+            document.getElementById('chat-options-menu').classList.add('hidden'); 
+
+            document.getElementById('chat-name').innerText = "Select a chat to start messaging";
+
+            window.cancelReply(); window.cancelEdit();
+            if(unsubMessages) unsubMessages(); if(unsubTyping) unsubTyping(); currentChatId = null;
+        };
+
+        function loadMessages() {
+            if(unsubMessages) unsubMessages();
+            const msgsDiv = document.getElementById('msgs'); msgsDiv.innerHTML = '';
+            
+            unsubMessages = onSnapshot(query(collection(db, "chats", currentChatId, "messages"), orderBy("createdAt", "asc")), (snap) => {
+                const wasTyping = document.getElementById('typing-bubble'); msgsDiv.innerHTML = '';
+                snap.forEach(d => renderMsg(d.id, d.data()));
+                if(wasTyping) msgsDiv.appendChild(wasTyping); msgsDiv.scrollTop = msgsDiv.scrollHeight;
+            });
+        }
+
+        function renderMsg(id, msg) {
+            const isMe = msg.senderId === currentUser.uid;
+            const msgsDiv = document.getElementById('msgs');
+            
+            let mediaHTML = '';
+            if (msg.mediaUrl) {
+                if (msg.mediaUrl.match(/\.(mp4|webm|ogg|mov)$/i)) {
+                    mediaHTML = `<div style="position:relative; display:inline-block; cursor:pointer;" onclick="openMedia('${msg.mediaUrl}', 'video', event)"><video src="${msg.mediaUrl}#t=0.001" class="chat-media" preload="metadata"></video><div style="position:absolute; inset:0; margin:5px 0; border-radius:8px; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.3); color:white; font-size:30px; text-shadow:0 2px 4px rgba(0,0,0,0.5);">▶</div></div>`;
+                } else mediaHTML = `<img src="${msg.mediaUrl}" class="chat-media" loading="lazy" style="cursor:pointer;" onclick="openMedia('${msg.mediaUrl}', 'image', event)">`;
+            }
+
+            let storyRefHTML = '';
+            if (msg.storyRefUrl || msg.storyRefText) {
+                let mediaTag = msg.storyRefUrl ? (msg.storyRefUrl.match(/\.(mp4|webm|ogg|mov)$/i) ? `<video src="${msg.storyRefUrl}#t=0.001" preload="metadata"></video>` : `<img src="${msg.storyRefUrl}">`) : `<div style="width:35px; height:50px; background:linear-gradient(135deg, #667eea, #764ba2); color:white; font-size:6px; padding:4px; overflow:hidden; border-radius:4px;">${msg.storyRefText}</div>`;
+                storyRefHTML = `<div class="story-ref-box">${mediaTag}<div><i>Replying to story</i></div></div>`;
+            }
+
+            let quotedHTML = '';
+            if (msg.replyToText && msg.replyToName) quotedHTML = `<div class="quoted-msg"><b>${msg.replyToName}</b><br><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${msg.replyToText}</span></div>`;
+
+            const isLong = msg.text && (msg.text.length > 50 || msg.text.includes('\n'));
+            const textHTML = msg.text ? `<div style="white-space: ${isLong ? 'pre-wrap' : 'normal'}">${msg.text}</div>` : '';
+            
+            const editTag = msg.edited && !msg.deleted ? `<span style="font-size:10px; opacity:0.6; margin-left:5px; font-style:italic;">(edited)</span>` : '';
+
+            let timeString = '';
+            if (msg.createdAt) timeString = msg.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            const timeHTML = `<span class="msg-time">${timeString}</span>`;
+
+            const div = document.createElement('div');
+            div.className = `msg ${isMe ? 'sent' : 'received'} ${msg.deleted ? 'deleted' : ''}`;
+            
+            div.innerHTML = `${msg.deleted ? '<i>This message was deleted</i>' : quotedHTML + storyRefHTML + mediaHTML + textHTML + editTag}${timeHTML}`;
+            
+            div.addEventListener('click', (e) => { e.stopPropagation(); window.openMsgMenu(e, id, msg, isMe); });
+            div.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); window.openMsgMenu(e, id, msg, isMe); });
+
+            msgsDiv.appendChild(div);
+
+            if (!msg.deleted) {
+                let startX = 0; let isSwiping = false;
+                div.addEventListener('touchstart', e => { startX = e.touches[0].clientX; isSwiping = true; div.style.transition = 'none'; }, {passive: true});
+                div.addEventListener('touchmove', e => { if (!isSwiping) return; let diffX = e.touches[0].clientX - startX; if (diffX > 0 && diffX < 80) div.style.transform = `translateX(${diffX}px)`; }, {passive: true});
+                div.addEventListener('touchend', e => {
+                    if (!isSwiping) return; isSwiping = false; let diffX = e.changedTouches[0].clientX - startX;
+                    div.style.transition = 'transform 0.2s ease-out'; div.style.transform = 'translateX(0px)';
+                    if (diffX > 50) {
+                        let previewText = msg.text || (msg.mediaUrl ? "📸 Media" : "Story reply");
+                        window.initiateReply(previewText, isMe ? "You" : activeChatUser.username);
+                    }
+                });
+            }
+        }
+
+        document.getElementById('form').onsubmit = async (e) => {
+            e.preventDefault();
+            const text = document.getElementById('inp').value.trim();
+            if(!text || !currentChatId) return;
+            
+            document.getElementById('inp').value = '';
+            if(activeChatUser.uid !== "gemini-bot") updateTypingStatus(false);
+
+            if (editingMsgId) {
+                await updateDoc(doc(db, "chats", currentChatId, "messages", editingMsgId), { text: text, edited: true });
+                window.cancelEdit();
+            } else {
+                await addDoc(collection(db, "chats", currentChatId, "messages"), { 
+                    text: text, senderId: currentUser.uid, createdAt: serverTimestamp(), deleted: false,
+                    replyToText: replyingTo ? replyingTo.text : null, replyToName: replyingTo ? replyingTo.name : null
+                });
+                window.cancelReply(); 
+                await setDoc(doc(db, "chats", currentChatId), { lastMessageSender: currentUser.uid, unread: true }, { merge: true });
+                if(activeChatUser.uid === "gemini-bot") askGemini(text);
+            }
+        };
+
+        const chatFileInput = document.getElementById('chat-file-input');
+        document.getElementById('attach-btn').onclick = () => chatFileInput.click();
+
+        chatFileInput.onchange = async (e) => {
+            const file = e.target.files[0];
+            if(!file || !currentChatId) return;
+
+            const loadingId = "load_" + Date.now();
+            document.getElementById('msgs').innerHTML += `<div id="${loadingId}" class="msg sent" style="opacity:0.7"><i>Uploading media...</i></div>`;
+            document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
+
+            try {
+                const formData = new FormData(); formData.append('file', file); formData.append('upload_preset', UPLOAD_PRESET);
+                const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`, { method: 'POST', body: formData });
+                
+                await addDoc(collection(db, "chats", currentChatId, "messages"), { 
+                    mediaUrl: (await res.json()).secure_url, text: "", senderId: currentUser.uid, createdAt: serverTimestamp(), deleted: false,
+                    replyToText: replyingTo ? replyingTo.text : null, replyToName: replyingTo ? replyingTo.name : null 
+                });
+                window.cancelReply();
+                await setDoc(doc(db, "chats", currentChatId), { lastMessageSender: currentUser.uid, unread: true }, { merge: true });
+            } catch (err) { alert("Failed to upload media."); } 
+            finally { document.getElementById(loadingId)?.remove(); chatFileInput.value = ''; }
+        };
+
+        document.getElementById('inp').addEventListener('input', () => {
+            if(!currentChatId || activeChatUser?.uid === 'gemini-bot') return;
+            updateTypingStatus(true); clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => updateTypingStatus(false), 2000);
+        });
+
+        async function updateTypingStatus(isTyping) { try { await setDoc(doc(db, "chats", currentChatId), { typing: { [currentUser.uid]: isTyping } }, { merge: true }); } catch(e){} }
+
+        function listenForTyping() {
+            if(unsubTyping) unsubTyping();
+            unsubTyping = onSnapshot(doc(db, "chats", currentChatId), (d) => {
+                const show = d.data()?.typing?.[activeChatUser.uid];
+                const existing = document.getElementById('typing-bubble');
+                if(show && !existing) {
+                    const div = document.createElement('div'); div.id = 'typing-bubble'; div.className = 'msg received';
+                    div.innerHTML = `<div class="typing-indicator"><span></span><span></span><span></span></div>`;
+                    document.getElementById('msgs').appendChild(div); document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
+                } else if(!show && existing) existing.remove();
+            });
+        }
+
+        window.del = async (id) => { if(confirm("Delete this message?")) await updateDoc(doc(db, "chats", currentChatId, "messages", id), { deleted: true, text: "", mediaUrl: null, storyRefUrl: null, storyRefText: null, replyToText: null, replyToName: null }); };
+
+        async function askGemini(text) {
+            if(!GEMINI_API_KEY || GEMINI_API_KEY.includes("YOUR")) return;
+            const typeDiv = document.createElement('div'); typeDiv.id = 'ai-type'; typeDiv.className = 'msg received';
+            typeDiv.innerHTML = `<div class="typing-indicator"><span></span><span></span><span></span></div>`;
+            document.getElementById('msgs').appendChild(typeDiv); document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
+
+            try {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ contents: [{ parts: [{ text }] }] })
+                });
+                await addDoc(collection(db, "chats", currentChatId, "messages"), { text: (await res.json()).candidates?.[0]?.content?.parts?.[0]?.text || "AI Error", senderId: "gemini-bot", createdAt: serverTimestamp(), deleted: false });
+            } catch(e) {} finally { document.getElementById('ai-type')?.remove(); }
+        }
+    </script>
+</body>
+</html>
