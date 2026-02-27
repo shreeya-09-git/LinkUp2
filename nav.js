@@ -9,7 +9,7 @@ const navHTML = `
     <a href="chats.html" class="nav-item ${currentPath.includes('chats.html') ? 'active' : ''}">
         <span class="nav-icon">💬</span>
         <span class="nav-label">Chats</span>
-        <div id="nav-badge-chats" class="nav-badge"></div>
+        <div id="nav-badge-chats" class="nav-badge" style="display:none; justify-content:center; align-items:center;"></div>
     </a>
     <a href="friends.html" class="nav-item ${currentPath.includes('friends.html') ? 'active' : ''}">
         <span class="nav-icon">👥</span>
@@ -18,11 +18,7 @@ const navHTML = `
     <a href="notifications.html" class="nav-item ${currentPath.includes('notifications.html') ? 'active' : ''}">
         <span class="nav-icon">🔔</span>
         <span class="nav-label">Alerts</span>
-        <div id="nav-badge-alerts" class="nav-badge"></div>
-    </a>
-    <a href="ai.html" class="nav-item ${currentPath.includes('ai.html') ? 'active' : ''}">
-        <span class="nav-icon">✨</span>
-        <span class="nav-label">AI</span>
+        <div id="nav-badge-alerts" class="nav-badge" style="display:none; justify-content:center; align-items:center;"></div>
     </a>
     <a href="profile.html" class="nav-item ${currentPath.includes('profile.html') ? 'active' : ''}">
         <span class="nav-icon">👤</span>
@@ -36,7 +32,7 @@ document.body.insertAdjacentHTML('beforeend', navHTML);
 // Global Listener for Navigation Badges
 onAuthStateChanged(auth, u => {
     if (u) {
-        // 1. Listen for Unread Messages across ALL chats
+        // 1. CHATS BADGE: Listen for Unread Messages
         onSnapshot(collection(db, "chats"), snap => {
             let unreadCount = 0;
             snap.forEach(d => {
@@ -47,19 +43,34 @@ onAuthStateChanged(auth, u => {
             });
             const badge = document.getElementById('nav-badge-chats');
             if (badge) {
-                badge.style.display = unreadCount > 0 ? 'block' : 'none';
+                badge.style.display = unreadCount > 0 ? 'flex' : 'none';
                 badge.innerText = unreadCount;
             }
         });
 
-        // 2. Listen for Pending Friend Requests
-        onSnapshot(query(collection(db, "requests"), where("to", "==", u.uid)), snap => {
-            const reqCount = snap.size;
+        // 2. ALERTS BADGE: Listen for Friend Requests & Unread Story Likes
+        let pendingRequests = 0;
+        let unreadNotifs = 0;
+
+        const updateAlertBadge = () => {
+            const totalAlerts = pendingRequests + unreadNotifs;
             const badge = document.getElementById('nav-badge-alerts');
             if (badge) {
-                badge.style.display = reqCount > 0 ? 'block' : 'none';
-                badge.innerText = reqCount;
+                badge.style.display = totalAlerts > 0 ? 'flex' : 'none';
+                badge.innerText = totalAlerts;
             }
+        };
+
+        // Watch for Friend Requests
+        onSnapshot(query(collection(db, "requests"), where("to", "==", u.uid)), snap => {
+            pendingRequests = snap.size;
+            updateAlertBadge();
+        });
+
+        // Watch for Unread Notifications (Story Likes)
+        onSnapshot(query(collection(db, "notifications"), where("to", "==", u.uid), where("read", "==", false)), snap => {
+            unreadNotifs = snap.size;
+            updateAlertBadge();
         });
     }
 });

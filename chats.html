@@ -443,7 +443,9 @@
             const userUid = currentViewerUIDs[activeUserIndex]; const btn = document.getElementById('story-like-btn');
             if (userUid === currentUser.uid || btn.classList.contains('liked')) return; 
             btn.innerText = '❤️'; btn.classList.add('liked');
-            await addDoc(collection(db, "notifications"), { type: 'story_like', from: currentUser.uid, to: userUid, timestamp: serverTimestamp() });
+            
+            // Added read: false here
+            await addDoc(collection(db, "notifications"), { type: 'story_like', from: currentUser.uid, to: userUid, timestamp: serverTimestamp(), read: false });
         };
 
         window.sendStoryReply = async () => {

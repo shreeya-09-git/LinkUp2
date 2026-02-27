@@ -25,7 +25,7 @@
     <script type="module">
         import { auth, db } from "./config.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         let currentUser = null;
 
@@ -53,8 +53,6 @@
                 
                 for (let d of snap.docs) {
                     const req = d.data();
-                    
-                    // Fetch live avatar of sender
                     const senderProfile = await getDoc(doc(db, "users", req.from));
                     const avatarData = senderProfile.exists() ? senderProfile.data().avatar : null;
                     const avatarHTML = avatarData && avatarData.startsWith('http') 
@@ -107,16 +105,18 @@
                 alert("Failed to accept request. Check your internet connection.");
             }
         };
-        window.rej = async (rid) => {
-            if(confirm("Reject request?")) await deleteDoc(doc(db, "requests", rid));
+
+        // --- REJECT FRIEND REQUEST ---
+        window.rej = async (rid) => { 
+            if(confirm("Reject request?")) {
+                await deleteDoc(doc(db, "requests", rid)); 
+            }
         };
 
         // ==========================================
-        // 2. LOAD ACTIVITY (STORY LIKES)
+        // 2. LOAD ACTIVITY (STORY LIKES & NOTIFICATIONS)
         // ==========================================
         function loadActivity() {
-            // NOTE: Removed orderBy() from query to prevent Firebase Index errors. 
-            // We now sort the array manually in Javascript instead!
             const q = query(collection(db, "notifications"), where("to", "==", currentUser.uid));
 
             onSnapshot(q, async (snap) => {
@@ -129,17 +129,21 @@
                 
                 el.innerHTML = '';
                 
-                // Sort the notifications manually (Newest first)
                 const sortedDocs = snap.docs.sort((a, b) => {
                     const timeA = a.data().timestamp ? a.data().timestamp.toMillis() : 0;
                     const timeB = b.data().timestamp ? b.data().timestamp.toMillis() : 0;
-                    return timeB - timeA; // Descending order
+                    return timeB - timeA;
                 });
                 
                 for (let d of sortedDocs) {
                     const notif = d.data();
                     
-                    // Fetch live profile of the person who liked your story
+                    // --- CLEAR BADGE LOGIC ---
+                    // Automatically mark the notification as "read" so the red badge disappears
+                    if (notif.read === false) {
+                        updateDoc(doc(db, "notifications", d.id), { read: true }).catch(e => console.log(e));
+                    }
+
                     const senderProfile = await getDoc(doc(db, "users", notif.from));
                     const senderData = senderProfile.exists() ? senderProfile.data() : { username: "Someone", avatar: "S" };
                     
@@ -149,7 +153,6 @@
                     let message = "";
                     if (notif.type === "story_like") message = `<b>${senderData.username}</b> liked your story. ❤️`;
 
-                    // Time formatting
                     let timeStr = "Just now";
                     if(notif.timestamp) {
                         const diffMins = Math.floor((Date.now() - notif.timestamp.toMillis()) / 60000);
@@ -167,9 +170,6 @@
                         </div>
                     </div>`;
                 }
-            }, (error) => {
-                console.error("Firebase Error Loading Notifications:", error);
-                document.getElementById('activity-list').innerHTML = `<div style="padding: 20px; text-align: center; color: red;">Error loading notifications.</div>`;
             });
         }
     </script>
