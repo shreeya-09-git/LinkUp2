@@ -13,7 +13,7 @@ const firebaseConfig = {
   measurementId: "G-XVEJSERLYQ"
 };
 
-export const GEMINI_API_KEY = "AIzaSyBlzux3JiMlL7TExYn6daHnEup5loo0cb0"; 
+export const GEMINI_API_KEY = "AIzaSyBofTsBGFZATWeXasaS81TMhkT04xTD4h8"; 
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);

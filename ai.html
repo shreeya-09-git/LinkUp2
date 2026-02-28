@@ -3,67 +3,181 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Assistant</title>
+    <title>Gemini AI - FireChat Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* NEW: Keeps the AI chat looking sleek and centered on large Desktop monitors */
+        @media (min-width: 768px) {
+            .ai-wrapper {
+                max-width: 800px;
+                margin: 0 auto;
+                border-left: 1px solid var(--border);
+                border-right: 1px solid var(--border);
+                background: white;
+            }
+        }
+    </style>
 </head>
-<body>
-    <div class="page-container">
-        <div class="header">✨ Gemini AI</div>
+<body style="background: #f9fafb;">
+    <div class="page-container ai-wrapper" style="display: flex; flex-direction: column; height: 100vh;">
         
-        <div class="chat-interface">
-            <div id="ai-msgs" class="msgs">
-                <div class="msg received">Hello! I'm Gemini. How can I help you today?</div>
+        <div class="header" style="justify-content: space-between;">
+            <div style="display:flex; align-items:center;">
+                <div class="avatar" style="width:30px; height:30px; background: linear-gradient(135deg, #6366f1, #a855f7); color: white; font-size:14px; margin-right:10px; border:none; display:flex; align-items:center; justify-content:center;">✨</div>
+                <span style="font-weight: 700; background: -webkit-linear-gradient(45deg, #6366f1, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Gemini AI</span>
             </div>
-            <form id="ai-form" class="input-area">
-                <input id="ai-inp" placeholder="Ask AI anything..." autocomplete="off">
-                <button class="btn btn-primary">✨</button>
+            <button onclick="clearAiChat()" class="btn" style="background:none; border:none; color:#ef4444; font-size:14px; cursor:pointer; padding-right:15px;">🗑️ Clear</button>
+        </div>
+
+        <div style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+            <div id="msgs" class="msgs" style="flex: 1; padding-bottom: 20px;"></div>
+
+            <form id="form" class="input-area" style="padding-bottom: 70px;"> <input id="inp" placeholder="Ask Gemini anything..." autocomplete="off" style="flex:1;">
+                <button type="submit" id="send-btn" class="btn btn-primary" style="background: linear-gradient(135deg, #6366f1, #a855f7); border: none;">➤</button>
             </form>
         </div>
     </div>
 
     <script type="module" src="nav.js"></script>
+    
     <script type="module">
-        import { GEMINI_API_KEY } from "./config.js";
+        import { auth, db, GEMINI_API_KEY } from "./config.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        const msgs = document.getElementById('ai-msgs');
-        
-        document.getElementById('ai-form').onsubmit = async (e) => {
-            e.preventDefault();
-            const text = document.getElementById('ai-inp').value;
-            if(!text) return;
+        let currentUser = null;
+        let aiChatId = null;
 
-            // User Msg
-            addMsg(text, 'sent');
-            document.getElementById('ai-inp').value = '';
-            
-            // Loading
-            const loadDiv = addMsg("Thinking...", 'received');
-
-            try {
-                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ contents: [{ parts: [{ text }] }] })
-                });
-                const data = await res.json();
-                loadDiv.remove(); // Remove loading text
+        onAuthStateChanged(auth, async u => {
+            if(!u) window.location.href = "index.html";
+            else {
+                currentUser = u;
+                aiChatId = currentUser.uid + "_gemini";
                 
-                if(data.error) throw new Error(data.error.message);
-                const aiText = data.candidates[0].content.parts[0].text;
-                addMsg(aiText, 'received');
-            } catch(err) {
-                loadDiv.innerText = "Error: " + err.message;
+                await setDoc(doc(db, "chats", aiChatId), { 
+                    participants: [currentUser.uid, 'gemini-bot'],
+                    unread: false 
+                }, { merge: true });
+
+                loadAiMessages();
+            }
+        });
+
+        // NEW: Function to translate Gemini's Markdown (**) into HTML Bold tags
+        function formatMarkdown(text) {
+            return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        }
+
+        // NEW: Clear AI Chat Logic
+        window.clearAiChat = async () => {
+            if (!aiChatId) return;
+            if (confirm("Are you sure you want to clear your conversation with Gemini?")) {
+                const q = query(collection(db, "chats", aiChatId, "messages"));
+                const snap = await getDocs(q);
+                snap.forEach(async (d) => {
+                    await deleteDoc(doc(db, "chats", aiChatId, "messages", d.id));
+                });
             }
         };
 
-        function addMsg(text, type) {
-            const div = document.createElement('div');
-            div.className = `msg ${type}`;
-            // Handle markdown-style simple formatting
-            div.innerHTML = text.replace(/\n/g, '<br>');
-            msgs.appendChild(div);
-            msgs.scrollTop = msgs.scrollHeight;
-            return div;
+        function loadAiMessages() {
+            const msgsDiv = document.getElementById('msgs');
+            const q = query(collection(db, "chats", aiChatId, "messages"), orderBy("createdAt", "asc"));
+            
+            onSnapshot(q, (snap) => {
+                const wasTyping = document.getElementById('ai-type');
+                msgsDiv.innerHTML = '';
+                
+                if (snap.empty) {
+                    msgsDiv.innerHTML = `<div class="msg received" style="white-space: pre-wrap; border-left: 3px solid #a855f7;">Hi ${currentUser.email.split('@')[0]}! I'm Gemini, your personal AI assistant. How can I help you today?</div>`;
+                }
+
+                snap.forEach(d => {
+                    const msg = d.data();
+                    const isMe = msg.senderId === currentUser.uid;
+                    const timeString = msg.createdAt ? msg.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+                    
+                    const div = document.createElement('div');
+                    div.className = `msg ${isMe ? 'sent' : 'received'}`;
+                    
+                    if (!isMe) div.style.borderLeft = "3px solid #a855f7";
+
+                    // Apply the markdown formatter to the text before rendering
+                    const formattedText = formatMarkdown(msg.text);
+                    
+                    div.innerHTML = `<div style="white-space: pre-wrap; line-height: 1.4;">${formattedText}</div><span class="msg-time">${timeString}</span>`;
+                    msgsDiv.appendChild(div);
+                });
+
+                if (wasTyping) msgsDiv.appendChild(wasTyping);
+                msgsDiv.scrollTop = msgsDiv.scrollHeight;
+            });
+        }
+
+        document.getElementById('form').onsubmit = async (e) => {
+            e.preventDefault();
+            const text = document.getElementById('inp').value.trim();
+            if(!text || !aiChatId) return;
+            
+            document.getElementById('inp').value = ''; 
+
+            await addDoc(collection(db, "chats", aiChatId, "messages"), { 
+                text: text, 
+                senderId: currentUser.uid, 
+                createdAt: serverTimestamp(), 
+                deleted: false 
+            });
+
+            askGemini(text);
+        };
+
+        async function askGemini(text) {
+            if(!GEMINI_API_KEY || GEMINI_API_KEY.includes("YOUR")) {
+                alert("⚠️ Please add your Gemini API Key in config.js!");
+                return;
+            }
+
+            const msgsDiv = document.getElementById('msgs');
+            
+            const typeDiv = document.createElement('div'); 
+            typeDiv.id = 'ai-type'; 
+            typeDiv.className = 'msg received';
+            typeDiv.style.borderLeft = "3px solid #a855f7";
+            typeDiv.innerHTML = `<div class="typing-indicator"><span></span><span></span><span></span></div>`;
+            msgsDiv.appendChild(typeDiv); 
+            msgsDiv.scrollTop = msgsDiv.scrollHeight;
+
+            try {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({ contents: [{ parts: [{ text }] }] })
+                });
+
+                if (!res.ok) throw new Error(`API Error: ${res.status}`);
+
+                const data = await res.json();
+                const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response.";
+
+                await addDoc(collection(db, "chats", aiChatId, "messages"), { 
+                    text: aiResponse, 
+                    senderId: "gemini-bot", 
+                    createdAt: serverTimestamp(), 
+                    deleted: false 
+                });
+                
+            } catch(e) {
+                console.error("Gemini AI Error:", e);
+                await addDoc(collection(db, "chats", aiChatId, "messages"), { 
+                    text: "⚠️ Connection to Gemini failed. Please check your API key in config.js.", 
+                    senderId: "gemini-bot", 
+                    createdAt: serverTimestamp(), 
+                    deleted: false 
+                });
+            } finally { 
+                document.getElementById('ai-type')?.remove(); 
+            }
         }
     </script>
 </body>
