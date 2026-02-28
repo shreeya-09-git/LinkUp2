@@ -124,8 +124,8 @@
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc, updateDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        const CLOUD_NAME = "divihazs2"; 
-        const UPLOAD_PRESET = "linkup_media"; 
+        const CLOUD_NAME = "YOUR_CLOUD_NAME"; 
+        const UPLOAD_PRESET = "YOUR_UPLOAD_PRESET"; 
 
         let currentUser = null;
         let currentChatId = null;
@@ -164,11 +164,9 @@
 
         // Close menus when clicking outside
         document.addEventListener('click', (e) => {
-            // Close message bubbles menu
             if (!e.target.closest('.msg')) {
                 document.getElementById('msg-menu').classList.remove('active');
             }
-            // Close header 3-dots menu
             if (!e.target.closest('#chat-options-wrapper')) {
                 const chatMenu = document.getElementById('chat-options-menu');
                 if(chatMenu && !chatMenu.classList.contains('hidden')) {
@@ -443,8 +441,6 @@
             const userUid = currentViewerUIDs[activeUserIndex]; const btn = document.getElementById('story-like-btn');
             if (userUid === currentUser.uid || btn.classList.contains('liked')) return; 
             btn.innerText = '❤️'; btn.classList.add('liked');
-            
-            // Added read: false here
             await addDoc(collection(db, "notifications"), { type: 'story_like', from: currentUser.uid, to: userUid, timestamp: serverTimestamp(), read: false });
         };
 
@@ -476,13 +472,17 @@
             document.getElementById('back').classList.remove('hidden');
             document.getElementById('header-avatar').classList.remove('hidden');
             
-            // SHOW THE 3-DOTS WRAPPER INSTEAD OF THE OLD BUTTON
+            // SHOW THE 3-DOTS WRAPPER
             document.getElementById('chat-options-wrapper').classList.remove('hidden'); 
             
             document.getElementById('header-avatar').innerHTML = friend.liveAvatar && friend.liveAvatar.startsWith('http') ? `<img src="${friend.liveAvatar}">` : (friend.liveAvatar || friend.username[0].toUpperCase());
             document.getElementById('chat-name').innerText = friend.username;
 
-            const uids = [currentUser.uid, friend.uid].sort(); currentChatId = uids.join('_');
+            const uids = [currentUser.uid, friend.uid].sort(); 
+            currentChatId = uids.join('_');
+            
+            // EXPOSE CURRENT CHAT ID TO WINDOW TO PREVENT BADGE FLICKERING
+            window.currentChatId = currentChatId; 
             
             await setDoc(doc(db, "chats", currentChatId), { participants: uids, unread: false }, { merge: true });
             loadMessages(); if(friend.uid !== 'gemini-bot') listenForTyping();
@@ -502,7 +502,11 @@
             document.getElementById('chat-name').innerText = "Select a chat to start messaging";
 
             window.cancelReply(); window.cancelEdit();
-            if(unsubMessages) unsubMessages(); if(unsubTyping) unsubTyping(); currentChatId = null;
+            if(unsubMessages) unsubMessages(); if(unsubTyping) unsubTyping(); 
+            
+            // CLEAR CHAT ID ON BACK
+            currentChatId = null;
+            window.currentChatId = null; 
         };
 
         function loadMessages() {

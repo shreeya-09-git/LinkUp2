@@ -46,19 +46,28 @@
                 const el = document.getElementById('requests-list');
                 const title = document.getElementById('req-title');
                 
-                el.innerHTML = '';
-                if(snap.empty) { title.style.display = 'none'; return; }
+                if(snap.empty) { 
+                    el.innerHTML = ''; 
+                    title.style.display = 'none'; 
+                    return; 
+                }
                 
                 title.style.display = 'block';
+                let tempHTML = ''; 
+                let unseenIds = []; // Track requests to mark as seen
                 
                 for (let d of snap.docs) {
                     const req = d.data();
+                    
+                    // If not seen yet, add to our list
+                    if (req.seen !== true) unseenIds.push(d.id);
+
                     const senderProfile = await getDoc(doc(db, "users", req.from));
                     const avatarData = senderProfile.exists() ? senderProfile.data().avatar : null;
                     const avatarHTML = avatarData && avatarData.startsWith('http') 
                         ? `<img src="${avatarData}">` : req.fromName[0].toUpperCase();
 
-                    el.innerHTML += `
+                    tempHTML += `
                     <div class="list-item">
                         <div class="avatar">${avatarHTML}</div>
                         <div class="info" style="font-size: 14px;"><b>${req.fromName}</b> wants to be friends.</div>
@@ -68,35 +77,27 @@
                         </div>
                     </div>`;
                 }
+                
+                el.innerHTML = tempHTML;
+
+                // Silently mark items as seen so the red badge disappears globally
+                unseenIds.forEach(id => {
+                    updateDoc(doc(db, "requests", id), { seen: true }).catch(e => console.log(e));
+                });
             });
         }
 
         // --- ACCEPT FRIEND REQUEST (TWO-WAY SYNC) ---
         window.acc = async (rid, senderUid) => {
             try {
-                // 1. Get both users' profile data
                 const senderDoc = await getDoc(doc(db, "users", senderUid));
                 const myDoc = await getDoc(doc(db, "users", currentUser.uid));
                 
-                // Fallbacks just in case data is missing
                 const senderData = senderDoc.exists() ? senderDoc.data() : { username: "User", avatar: "" };
                 const myData = myDoc.exists() ? myDoc.data() : { username: "User", avatar: "" };
                 
-                // 2. Add the sender to YOUR friends list
-                await setDoc(doc(db, "users", currentUser.uid, "friends", senderUid), { 
-                    uid: senderUid, 
-                    username: senderData.username, 
-                    avatar: senderData.avatar || senderData.username[0].toUpperCase() 
-                });
-                
-                // 3. Add YOU to the SENDER'S friends list
-                await setDoc(doc(db, "users", senderUid, "friends", currentUser.uid), { 
-                    uid: currentUser.uid, 
-                    username: myData.username, 
-                    avatar: myData.avatar || myData.username[0].toUpperCase() 
-                });
-                
-                // 4. Delete the pending request so it disappears from the list
+                await setDoc(doc(db, "users", currentUser.uid, "friends", senderUid), { uid: senderUid, username: senderData.username, avatar: senderData.avatar || senderData.username[0].toUpperCase() });
+                await setDoc(doc(db, "users", senderUid, "friends", currentUser.uid), { uid: currentUser.uid, username: myData.username, avatar: myData.avatar || myData.username[0].toUpperCase() });
                 await deleteDoc(doc(db, "requests", rid));
                 
                 alert("Friend request accepted! You can now chat.");
@@ -114,7 +115,7 @@
         };
 
         // ==========================================
-        // 2. LOAD ACTIVITY (STORY LIKES & NOTIFICATIONS)
+        // 2. LOAD ACTIVITY (STORY LIKES)
         // ==========================================
         function loadActivity() {
             const q = query(collection(db, "notifications"), where("to", "==", currentUser.uid));
@@ -127,8 +128,9 @@
                     return;
                 }
                 
-                el.innerHTML = '';
-                
+                let tempHTML = ''; 
+                let unreadIds = []; 
+
                 const sortedDocs = snap.docs.sort((a, b) => {
                     const timeA = a.data().timestamp ? a.data().timestamp.toMillis() : 0;
                     const timeB = b.data().timestamp ? b.data().timestamp.toMillis() : 0;
@@ -138,11 +140,7 @@
                 for (let d of sortedDocs) {
                     const notif = d.data();
                     
-                    // --- CLEAR BADGE LOGIC ---
-                    // Automatically mark the notification as "read" so the red badge disappears
-                    if (notif.read === false) {
-                        updateDoc(doc(db, "notifications", d.id), { read: true }).catch(e => console.log(e));
-                    }
+                    if (notif.read === false) unreadIds.push(d.id);
 
                     const senderProfile = await getDoc(doc(db, "users", notif.from));
                     const senderData = senderProfile.exists() ? senderProfile.data() : { username: "Someone", avatar: "S" };
@@ -161,7 +159,7 @@
                         else timeStr = `${Math.floor(diffMins/1440)}d ago`;
                     }
 
-                    el.innerHTML += `
+                    tempHTML += `
                     <div class="list-item">
                         <div class="avatar">${avatarHTML}</div>
                         <div class="info">
@@ -170,6 +168,13 @@
                         </div>
                     </div>`;
                 }
+
+                el.innerHTML = tempHTML;
+
+                // Silently mark items as read so the red badge disappears globally
+                unreadIds.forEach(id => {
+                    updateDoc(doc(db, "notifications", id), { read: true }).catch(e => console.log(e));
+                });
             });
         }
     </script>
