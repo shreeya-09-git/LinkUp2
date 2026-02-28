@@ -54,12 +54,10 @@
                 
                 title.style.display = 'block';
                 let tempHTML = ''; 
-                let unseenIds = []; // Track requests to mark as seen
+                let unseenIds = []; 
                 
                 for (let d of snap.docs) {
                     const req = d.data();
-                    
-                    // If not seen yet, add to our list
                     if (req.seen !== true) unseenIds.push(d.id);
 
                     const senderProfile = await getDoc(doc(db, "users", req.from));
@@ -78,9 +76,12 @@
                     </div>`;
                 }
                 
-                el.innerHTML = tempHTML;
+                // FIXED: Only update the screen if the content actually changed!
+                if (el.innerHTML.trim() !== tempHTML.trim()) {
+                    el.innerHTML = tempHTML;
+                }
 
-                // Silently mark items as seen so the red badge disappears globally
+                // Silently mark items as seen
                 unseenIds.forEach(id => {
                     updateDoc(doc(db, "requests", id), { seen: true }).catch(e => console.log(e));
                 });
@@ -169,9 +170,12 @@
                     </div>`;
                 }
 
-                el.innerHTML = tempHTML;
+                // FIXED: Only update the screen if the content actually changed!
+                if (el.innerHTML.trim() !== tempHTML.trim()) {
+                    el.innerHTML = tempHTML;
+                }
 
-                // Silently mark items as read so the red badge disappears globally
+                // Silently mark items as read
                 unreadIds.forEach(id => {
                     updateDoc(doc(db, "notifications", id), { read: true }).catch(e => console.log(e));
                 });
