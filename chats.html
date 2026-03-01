@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chats - FireChat Pro</title>
+    <title>Chats - LinkUp</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <style>
@@ -22,7 +22,7 @@
         }
         .header-dropdown button:hover { background: #fef2f2; }
 
-        /* Gentle Online Status UI (No layout-breaking !important tags) */
+        /* Gentle Online Status UI */
         .avatar-container { position: relative; display: inline-block; }
         .status-indicator { 
             position: absolute; bottom: 0px; right: 0px; 
@@ -31,12 +31,71 @@
         }
         .status-online { background-color: #10b981; }
         .status-offline { background-color: #9ca3af; }
+
+        /* ==========================================
+           ACTIVE SESSIONS MODAL (STRICT BLACK TEXT)
+           ========================================== */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); 
+            display: flex; justify-content: center; align-items: center; 
+            z-index: 9999; backdrop-filter: blur(4px); opacity: 0; 
+            pointer-events: none; transition: 0.2s ease;
+        }
+        .modal-overlay.active { opacity: 1; pointer-events: all; }
+
+        .session-modal {
+            background: #ffffff !important; /* Force white background */
+            width: 95%; max-width: 400px; 
+            border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
+            overflow: hidden; display: flex; flex-direction: column;
+            color: #000000 !important; /* Force all internal text to black */
+        }
+
+        .session-modal-header {
+            padding: 15px 20px; border-bottom: 1px solid #eee; 
+            display: flex; justify-content: space-between; align-items: center;
+            background: #f9f9f9;
+        }
+
+        /* Specifically targeting every possible text element inside the modal */
+        .session-modal h3, 
+        .session-modal span, 
+        .session-modal div, 
+        .session-modal p,
+        .session-title,
+        .session-meta {
+            color: #000000 !important; 
+        }
+
+        .session-list { padding: 10px 20px; max-height: 350px; overflow-y: auto; background: #ffffff; }
+        
+        .session-item {
+            padding: 15px 0; border-bottom: 1px solid #f0f0f0; 
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        .session-title { font-weight: 700; font-size: 14px; }
+        .session-meta { font-size: 12px; opacity: 0.7; font-weight: 400; }
+        
+        .current-device-badge { 
+            background: #10b981; color: white !important; /* Keep badge text white */
+            padding: 2px 8px; border-radius: 20px; font-size: 10px; 
+        }
+
+        .logout-device-btn { 
+            background: #ffeded; border: 1px solid #ffcccc; color: #d00000 !important; 
+            padding: 6px 12px; border-radius: 6px; font-size: 11px; cursor: pointer; 
+        }
+        .logout-device-btn:hover { background: #d00000; color: white !important; }
     </style>
 </head>
 <body>
     <div class="page-container chats-container">
         <div id="left-pane" class="left-pane">
-            <div class="header">Messages</div>
+            <div class="header" style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Messages</span>
+                <button onclick="openSessionsModal()" style="background:none; border:none; cursor:pointer; font-size:18px;" title="Active Sessions">⚙️</button>
+            </div>
             <div class="stories-scroll" id="stories-row" style="background:white; border-bottom:1px solid #eee; display:flex; gap:15px; padding:15px; overflow-x:auto;"></div>
             <div id="chat-list"></div>
         </div>
@@ -68,7 +127,7 @@
 
             <div id="no-chat-placeholder" style="flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column; color:#999;">
                 <div style="font-size: 60px; margin-bottom: 20px;">💬</div>
-                <h3 style="color:#333; margin:0;">FireChat for Web</h3>
+                <h3 style="color:#333; margin:0;">LinkUp for Web</h3>
                 <p>Select a friend from the left to start messaging.</p>
             </div>
 
@@ -131,11 +190,23 @@
         <div id="media-viewer-content" style="width:100vw; height:100vh; display:flex; justify-content:center; align-items:center;"></div>
     </div>
 
+    <div id="sessions-modal" class="modal-overlay">
+        <div class="session-modal">
+            <div class="session-modal-header">
+                <h3>Active Sessions</h3>
+                <button class="session-modal-close" onclick="closeSessionsModal()">&times;</button>
+            </div>
+            <div id="session-list-container" class="session-list">
+                <div style="text-align:center; padding:20px; color:#999; font-size:13px;">Loading devices...</div>
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="nav.js"></script>
     
     <script type="module">
         import { auth, db, GEMINI_API_KEY, updateUserStatus } from "./config.js";
-        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc, updateDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const CLOUD_NAME = "divihazs2"; 
@@ -161,13 +232,59 @@
         let editingMsgId = null; 
 
         // ==========================================
-        // AUTH & STATUS ENGINE
+        // AUTH & STATUS ENGINE (With Crash-Proof Tracker)
         // ==========================================
-        onAuthStateChanged(auth, u => {
-            if(!u) window.location.href = "index.html";
-            else {
+        onAuthStateChanged(auth, async u => {
+            if(!u) {
+                window.location.href = "index.html"; 
+            } else {
                 currentUser = u;
                 updateUserStatus(currentUser.uid, true); 
+
+                // 1. Get or create a unique Device ID for THIS browser
+                let deviceId = localStorage.getItem('linkup_device_id');
+                if (!deviceId) {
+                    deviceId = "dev_" + Math.random().toString(36).substring(2, 15);
+                    localStorage.setItem('linkup_device_id', deviceId);
+                }
+                window.currentDeviceId = deviceId; 
+
+                // 2. Log this device info into Firestore (Wrapped in Try/Catch to prevent crashes)
+                try {
+                    const parser = navigator.userAgent; 
+                    let browserName = "Unknown Browser";
+                    if (parser.includes("Chrome")) browserName = "Chrome";
+                    else if (parser.includes("Firefox")) browserName = "Firefox";
+                    else if (parser.includes("Safari") && !parser.includes("Chrome")) browserName = "Safari";
+                    else if (parser.includes("Edge")) browserName = "Edge";
+
+                    const platformOS = navigator.platform || "Unknown OS";
+
+                    await setDoc(doc(db, "users", currentUser.uid, "sessions", deviceId), {
+                        deviceId: deviceId,
+                        browser: browserName,
+                        os: platformOS,
+                        lastActive: serverTimestamp()
+                    }, { merge: true });
+
+                    // 🚨 THE REMOTE KILL SWITCH
+                    // This device constantly watches its own session file.
+                    onSnapshot(doc(db, "users", currentUser.uid, "sessions", deviceId), (docSnap) => {
+                        // If the file is deleted remotely, kick this browser out instantly!
+                        if (!docSnap.exists() && auth.currentUser) {
+                            alert("You have been logged out remotely from another device.");
+                            signOut(auth).then(() => {
+                                localStorage.removeItem('linkup_device_id');
+                                window.location.href = "index.html"; // Kicks them to login page
+                            });
+                        }
+                    });
+
+                } catch (error) {
+                    console.error("🚨 Session Tracker Blocked by Firebase:", error);
+                }
+
+                // 3. These will now ALWAYS run, even if the session tracker fails!
                 loadFriendsList(); 
                 loadStories();     
                 const params = new URLSearchParams(window.location.search);
@@ -175,15 +292,8 @@
             }
         });
 
-        document.addEventListener('visibilitychange', () => {
-            if (currentUser) {
-                if (document.visibilityState === 'hidden') updateUserStatus(currentUser.uid, false); 
-                else updateUserStatus(currentUser.uid, true);
-            }
-        });
-
         // ==========================================
-        // HELPERS
+        // HELPERS & ACTIVE SESSIONS
         // ==========================================
         function getRelativeTime(timestamp) {
             if (!timestamp) return "recently";
@@ -212,6 +322,55 @@
             </div>`;
         }
 
+        // Active Sessions Functions
+        window.openSessionsModal = () => {
+            document.getElementById('sessions-modal').classList.add('active');
+            loadActiveSessions();
+        };
+
+        window.closeSessionsModal = () => {
+            document.getElementById('sessions-modal').classList.remove('active');
+        };
+
+        function loadActiveSessions() {
+            const container = document.getElementById('session-list-container');
+            container.innerHTML = '<div style="text-align:center; padding:20px; color:#999; font-size:13px;">Loading devices...</div>';
+
+            onSnapshot(collection(db, "users", currentUser.uid, "sessions"), (snap) => {
+                if (snap.empty) {
+                    container.innerHTML = '<div style="padding: 20px; text-align: center; color: #9ca3af; font-size:13px;">No active sessions found.</div>';
+                    return;
+                }
+
+                let html = '';
+                snap.forEach(docSnap => {
+                    const data = docSnap.data();
+                    const isCurrent = data.deviceId === window.currentDeviceId;
+                    const badge = isCurrent ? `<span class="current-device-badge">This Device</span>` : '';
+                    const timeText = data.lastActive ? getRelativeTime(data.lastActive) : "recently";
+                    const actionBtn = isCurrent ? '' : `<button class="logout-device-btn" onclick="removeSession('${data.deviceId}')">Log Out</button>`;
+
+                    html += `
+                    <div class="session-item">
+                        <div>
+                            <div class="session-title">💻 ${data.os} - ${data.browser} ${badge}</div>
+                            <div class="session-meta">Last active: ${timeText}</div>
+                        </div>
+                        ${actionBtn}
+                    </div>`;
+                });
+                container.innerHTML = html;
+            });
+        }
+
+        window.removeSession = async (targetDeviceId) => {
+            if(confirm("Are you sure you want to log out this device remotely?")) {
+                await deleteDoc(doc(db, "users", currentUser.uid, "sessions", targetDeviceId));
+                // Note: To fully force logout, Firebase Custom Claims/Tokens are required on the backend. 
+                // For now, this perfectly removes them from the UI list!
+            }
+        };
+
         // --- HEADER 3-DOTS MENU LOGIC ---
         window.toggleChatMenu = (e) => {
             e.stopPropagation();
@@ -224,6 +383,7 @@
                 const chatMenu = document.getElementById('chat-options-menu');
                 if(chatMenu && !chatMenu.classList.contains('hidden')) chatMenu.classList.add('hidden');
             }
+            if(e.target.classList.contains('modal-overlay')) closeSessionsModal();
         });
 
         // --- CLEAR CHAT LOGIC ---
@@ -292,49 +452,6 @@
 
         window.cancelReply = () => { replyingTo = null; document.getElementById('reply-preview').style.display = 'none'; };
 
-        // --- UPGRADED STORY REPLY LOGIC (Pauses Story while typing) ---
-        const storyReplyInput = document.getElementById('story-reply-input');
-
-        // 1. Send reply on Enter
-        storyReplyInput.addEventListener('keypress', function(e) { 
-            if (e.key === 'Enter') { e.preventDefault(); window.sendStoryReply(); } 
-        });
-
-        // 2. Pause story when clicking the input (Focus)
-        storyReplyInput.addEventListener('focus', () => {
-            clearTimeout(storyTimer); // Stop the 5-second countdown
-            
-            // Freeze the visual progress bar exactly where it is
-            const currentBar = document.getElementById(`prog-${activeStoryIndex}`);
-            if(currentBar) {
-                const computedWidth = window.getComputedStyle(currentBar).width;
-                currentBar.style.transition = 'none';
-                currentBar.style.width = computedWidth;
-            }
-            
-            // If it's a video story, pause the video!
-            const video = document.querySelector('#media-container video');
-            if(video) video.pause();
-        });
-
-        // 3. Resume story when clicking away or sending (Blur)
-        storyReplyInput.addEventListener('blur', () => {
-            // Only resume if the viewer is still actually open
-            if (!document.getElementById('story-viewer').classList.contains('hidden')) {
-                storyTimer = setTimeout(window.nextStory, 5000); // Start counting again
-                
-                // Resume the visual progress bar
-                const currentBar = document.getElementById(`prog-${activeStoryIndex}`);
-                if(currentBar) {
-                    currentBar.style.transition = 'width 5s linear';
-                    currentBar.style.width = '100%';
-                }
-                
-                // Resume the video if it's a video story
-                const video = document.querySelector('#media-container video');
-                if(video) video.play();
-            }
-        });
         // ==========================================
         // 1. FRIEND LIST
         // ==========================================
@@ -464,7 +581,7 @@
                 footer.classList.remove('hidden'); 
                 delContainer.innerHTML = ''; 
                 
-                // Check if we already liked this specific story
+                // Persistent Likes Memory
                 let likedStories = JSON.parse(localStorage.getItem('likedStories') || '[]');
                 if (likedStories.includes(story.id)) {
                     document.getElementById('story-like-btn').className = 'story-action-btn liked'; 
@@ -503,26 +620,50 @@
             
             if (userUid === currentUser.uid || btn.classList.contains('liked')) return; 
             
-            // Instantly change UI
             btn.innerText = '❤️'; 
             btn.classList.add('liked');
 
-            // Save to memory so it stays red forever
+            // Save Like to Memory
             let likedStories = JSON.parse(localStorage.getItem('likedStories') || '[]');
             if (!likedStories.includes(story.id)) {
                 likedStories.push(story.id);
                 localStorage.setItem('likedStories', JSON.stringify(likedStories));
             }
 
-            // Send the notification to the other user
-            await addDoc(collection(db, "notifications"), { 
-                type: 'story_like', 
-                from: currentUser.uid, 
-                to: userUid, 
-                timestamp: serverTimestamp(), 
-                read: false 
-            });
+            await addDoc(collection(db, "notifications"), { type: 'story_like', from: currentUser.uid, to: userUid, timestamp: serverTimestamp(), read: false });
         };
+
+        // --- STORY REPLY LOGIC (Pauses Video/Timer while typing) ---
+        const storyReplyInput = document.getElementById('story-reply-input');
+
+        storyReplyInput.addEventListener('keypress', function(e) { 
+            if (e.key === 'Enter') { e.preventDefault(); window.sendStoryReply(); } 
+        });
+
+        storyReplyInput.addEventListener('focus', () => {
+            clearTimeout(storyTimer);
+            const currentBar = document.getElementById(`prog-${activeStoryIndex}`);
+            if(currentBar) {
+                const computedWidth = window.getComputedStyle(currentBar).width;
+                currentBar.style.transition = 'none';
+                currentBar.style.width = computedWidth;
+            }
+            const video = document.querySelector('#media-container video');
+            if(video) video.pause();
+        });
+
+        storyReplyInput.addEventListener('blur', () => {
+            if (!document.getElementById('story-viewer').classList.contains('hidden')) {
+                storyTimer = setTimeout(window.nextStory, 5000);
+                const currentBar = document.getElementById(`prog-${activeStoryIndex}`);
+                if(currentBar) {
+                    currentBar.style.transition = 'width 5s linear';
+                    currentBar.style.width = '100%';
+                }
+                const video = document.querySelector('#media-container video');
+                if(video) video.play();
+            }
+        });
 
         window.sendStoryReply = async () => {
             const userUid = currentViewerUIDs[activeUserIndex]; const input = document.getElementById('story-reply-input'); const text = input.value.trim();
@@ -555,7 +696,6 @@
 
             if (unsubActiveUser) unsubActiveUser(); 
 
-            // LIVE HEADER STATUS
             if (friend.uid === 'gemini-bot') {
                 document.getElementById('header-avatar').innerHTML = '✨';
                 document.getElementById('header-status-dot').style.display = 'block';
@@ -756,7 +896,7 @@
             document.getElementById('msgs').appendChild(typeDiv); document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
 
             try {
-                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
                     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ contents: [{ parts: [{ text }] }] })
                 });
                 if (!res.ok) throw new Error(`API Error: ${res.status}`);

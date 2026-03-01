@@ -21,7 +21,7 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 
 // Your Gemini API Key
-export const GEMINI_API_KEY = "AIzaSyB3vMMCr5l8zHRRDZaSVVm5zme8UHxDsCg"; 
+export const GEMINI_API_KEY = "AIzaSyB81nnTN2jqIfN6fTC20kLOHcTojtDLcFM"; 
 
 // ==========================================
 // GLOBAL ONLINE/OFFLINE ENGINE
