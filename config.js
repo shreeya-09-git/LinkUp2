@@ -3,24 +3,7 @@ import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// Function to update my own status
-export const setUserStatus = async (userId, isOnline) => {
-    const userRef = doc(db, "users", userId);
-    try {
-        await updateDoc(userRef, {
-            online: isOnline,
-            lastSeen: serverTimestamp()
-        });
-    } catch (e) {
-        console.error("Error updating status:", e);
-    }
-};
-
-// Hook into browser events to catch when they leave
-window.addEventListener('beforeunload', () => {
-    if (currentUser) setUserStatus(currentUser.uid, false);
-});
-
+// Your Firebase Configuration
 const firebaseConfig = {
   apiKey: "AIzaSyCLWbJAw5Le6Fqxq9THQFYqp2JL5WCPSxk",
   authDomain: "weba-f5bc5.firebaseapp.com",
@@ -32,8 +15,25 @@ const firebaseConfig = {
   measurementId: "G-XVEJSERLYQ"
 };
 
-export const GEMINI_API_KEY = "AIzaSyAtOuP_oFBLOuMReJsHkuoZAL4RteQ_PjU"; 
-
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// Your Gemini API Key
+export const GEMINI_API_KEY = "AIzaSyB3vMMCr5l8zHRRDZaSVVm5zme8UHxDsCg"; 
+
+// ==========================================
+// GLOBAL ONLINE/OFFLINE ENGINE
+// ==========================================
+export const updateUserStatus = async (uid, isOnline) => {
+    if (!uid) return;
+    try {
+        await updateDoc(doc(db, "users", uid), {
+            online: isOnline,
+            lastSeen: serverTimestamp()
+        });
+    } catch (e) {
+        console.error("Status Update Error:", e);
+    }
+};

@@ -16,14 +16,21 @@
         }
         .header-dropdown button {
             padding: 12px 15px; background: none; border: none; 
-            border-bottom: 1px solid #f3f4f6; text-align: left; 
-            cursor: pointer; font-size: 14px; font-family: 'Inter', sans-serif;
-            color: var(--text-dark); transition: background 0.2s;
+            text-align: left; cursor: pointer; font-size: 14px; 
+            font-family: 'Inter', sans-serif; color: #ef4444; 
+            transition: background 0.2s;
         }
-        .header-dropdown button:hover { background: #f9fafb; }
-        .header-dropdown button:last-child { border-bottom: none; }
-        .header-dropdown button.danger { color: #ef4444; }
-        .header-dropdown button.danger:hover { background: #fef2f2; }
+        .header-dropdown button:hover { background: #fef2f2; }
+
+        /* Gentle Online Status UI (No layout-breaking !important tags) */
+        .avatar-container { position: relative; display: inline-block; }
+        .status-indicator { 
+            position: absolute; bottom: 0px; right: 0px; 
+            width: 12px; height: 12px; border-radius: 50%; 
+            border: 2px solid var(--bg-color, #ffffff); z-index: 10; 
+        }
+        .status-online { background-color: #10b981; }
+        .status-offline { background-color: #9ca3af; }
     </style>
 </head>
 <body>
@@ -35,18 +42,25 @@
         </div>
 
         <div id="conversation" class="right-pane">
-            <div class="header" style="position:relative;">
+            <div class="header" style="position:relative; display: flex; align-items: center;">
                 <button id="back" class="hidden btn" style="font-size:20px; background:none; border:none; padding-right:15px;">←</button>
-                <div id="header-avatar" class="avatar hidden" style="width:30px; height:30px; font-size:14px; margin-right:10px;">?</div>
-                <span id="chat-name">Select a chat to start messaging</span>
+                
+                <div id="header-avatar-wrapper" class="hidden" style="position:relative; margin-right:10px;">
+                    <div id="header-avatar" class="avatar" style="width:35px; height:35px; font-size:14px;">?</div>
+                    <div id="header-status-dot" class="status-indicator status-offline" style="display:none;"></div>
+                </div>
+                
+                <div style="display:flex; flex-direction:column; justify-content:center;">
+                    <span id="chat-name" style="font-weight: 600; font-size: 16px;">Select a chat to start messaging</span>
+                    <span id="chat-status" style="font-size:12px; color:#9ca3af; margin-top:-2px;"></span>
+                </div>
+
                 <div style="flex:1"></div>
                 
                 <div id="chat-options-wrapper" class="hidden" style="position:relative; display:flex; align-items:center;">
                     <button id="chat-options-btn" class="btn" style="font-size:22px; background:none; border:none; color:var(--text-dark); cursor:pointer; padding: 0 5px;" onclick="toggleChatMenu(event)">⋮</button>
                     
                     <div id="chat-options-menu" class="header-dropdown hidden">
-                        <button onclick="alert('Search feature coming soon!')">🔍 Search</button>
-                        <button onclick="alert('Pin feature coming soon!')">📌 Pin Chat</button>
                         <button class="danger" onclick="clearChat()">🗑️ Clear Chat</button>
                     </div>
                 </div>
@@ -120,7 +134,7 @@
     <script type="module" src="nav.js"></script>
     
     <script type="module">
-        import { auth, db, GEMINI_API_KEY } from "./config.js";
+        import { auth, db, GEMINI_API_KEY, updateUserStatus } from "./config.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc, updateDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
@@ -132,6 +146,7 @@
         let activeChatUser = null;
         let unsubMessages = null;
         let unsubTyping = null;
+        let unsubActiveUser = null; 
         let typingTimeout = null;
         let chatBadgeUnsubs = {}; 
 
@@ -145,10 +160,14 @@
         let replyingTo = null; 
         let editingMsgId = null; 
 
+        // ==========================================
+        // AUTH & STATUS ENGINE
+        // ==========================================
         onAuthStateChanged(auth, u => {
             if(!u) window.location.href = "index.html";
             else {
                 currentUser = u;
+                updateUserStatus(currentUser.uid, true); 
                 loadFriendsList(); 
                 loadStories();     
                 const params = new URLSearchParams(window.location.search);
@@ -156,53 +175,78 @@
             }
         });
 
+        document.addEventListener('visibilitychange', () => {
+            if (currentUser) {
+                if (document.visibilityState === 'hidden') updateUserStatus(currentUser.uid, false); 
+                else updateUserStatus(currentUser.uid, true);
+            }
+        });
+
+        // ==========================================
+        // HELPERS
+        // ==========================================
+        function getRelativeTime(timestamp) {
+            if (!timestamp) return "recently";
+            const dateObj = new Date(timestamp.toMillis ? timestamp.toMillis() : timestamp);
+            const now = new Date();
+
+            const isToday = dateObj.toDateString() === now.toDateString();
+            const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+            const isYesterday = dateObj.toDateString() === yesterday.toDateString();
+
+            const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            if (isToday) return `today at ${timeStr}`;
+            if (isYesterday) return `yesterday at ${timeStr}`;
+            const dateStr = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
+            return `on ${dateStr} at ${timeStr}`;
+        }
+
+        function getAvatarWithStatus(avatarUrl, username, isOnline, hasStoryClass = '') {
+            const imgHTML = avatarUrl && avatarUrl.startsWith('http') ? `<img src="${avatarUrl}">` : (avatarUrl || username[0].toUpperCase());
+            const statusClass = isOnline ? 'status-online' : 'status-offline';
+            return `
+            <div class="avatar-container">
+                <div class="avatar ${hasStoryClass}">${imgHTML}</div>
+                <div class="status-indicator ${statusClass}"></div>
+            </div>`;
+        }
+
         // --- HEADER 3-DOTS MENU LOGIC ---
         window.toggleChatMenu = (e) => {
             e.stopPropagation();
             document.getElementById('chat-options-menu').classList.toggle('hidden');
         };
 
-        // Close menus when clicking outside
         document.addEventListener('click', (e) => {
-            if (!e.target.closest('.msg')) {
-                document.getElementById('msg-menu').classList.remove('active');
-            }
+            if (!e.target.closest('.msg')) document.getElementById('msg-menu').classList.remove('active');
             if (!e.target.closest('#chat-options-wrapper')) {
                 const chatMenu = document.getElementById('chat-options-menu');
-                if(chatMenu && !chatMenu.classList.contains('hidden')) {
-                    chatMenu.classList.add('hidden');
-                }
+                if(chatMenu && !chatMenu.classList.contains('hidden')) chatMenu.classList.add('hidden');
             }
         });
 
         // --- CLEAR CHAT LOGIC ---
         window.clearChat = async () => {
-            document.getElementById('chat-options-menu').classList.add('hidden'); // Close menu
+            document.getElementById('chat-options-menu').classList.add('hidden'); 
             if (!currentChatId) return;
             if (confirm("Are you sure you want to completely clear this chat? This cannot be undone.")) {
                 try {
                     const q = query(collection(db, "chats", currentChatId, "messages"));
                     const snap = await getDocs(q);
-                    snap.forEach(async (d) => {
-                        await deleteDoc(doc(db, "chats", currentChatId, "messages", d.id));
-                    });
-                } catch (e) {
-                    console.error("Error clearing chat: ", e);
-                    alert("Failed to clear chat.");
-                }
+                    snap.forEach(async (d) => await deleteDoc(doc(db, "chats", currentChatId, "messages", d.id)));
+                } catch (e) { alert("Failed to clear chat."); }
             }
         };
 
         // --- MESSAGE CONTEXT MENU LOGIC ---
         window.openMsgMenu = (e, id, msg, isMe) => {
             if (msg.deleted) return; 
-
             const menu = document.getElementById('msg-menu');
             menu.classList.add('active');
             
             let x = e.clientX || (e.touches && e.touches[0].clientX) || 50;
             let y = e.clientY || (e.touches && e.touches[0].clientY) || window.innerHeight / 2;
-            
             menu.style.left = Math.min(x, window.innerWidth - 150) + 'px';
             menu.style.top = Math.min(y, window.innerHeight - 150) + 'px';
 
@@ -215,106 +259,109 @@
             const editBtn = document.getElementById('menu-edit');
             if (isMe && msg.text && !msg.mediaUrl) {
                 editBtn.classList.remove('hidden');
-                editBtn.onclick = () => {
-                    window.startEdit(id, msg.text);
-                    menu.classList.remove('active');
-                };
-            } else {
-                editBtn.classList.add('hidden');
-            }
+                editBtn.onclick = () => { window.startEdit(id, msg.text); menu.classList.remove('active'); };
+            } else editBtn.classList.add('hidden');
 
             const deleteBtn = document.getElementById('menu-delete');
             if (isMe) {
                 deleteBtn.classList.remove('hidden');
-                deleteBtn.onclick = () => {
-                    window.del(id);
-                    menu.classList.remove('active');
-                };
-            } else {
-                deleteBtn.classList.add('hidden');
-            }
+                deleteBtn.onclick = () => { window.del(id); menu.classList.remove('active'); };
+            } else deleteBtn.classList.add('hidden');
         };
 
-        window.startEdit = (id, text) => {
-            editingMsgId = id;
-            document.getElementById('inp').value = text;
-            document.getElementById('inp').focus();
-            document.getElementById('edit-banner').style.display = 'flex';
-        };
-
-        window.cancelEdit = () => {
-            editingMsgId = null;
-            document.getElementById('inp').value = '';
-            document.getElementById('edit-banner').style.display = 'none';
-        };
+        window.startEdit = (id, text) => { editingMsgId = id; document.getElementById('inp').value = text; document.getElementById('inp').focus(); document.getElementById('edit-banner').style.display = 'flex'; };
+        window.cancelEdit = () => { editingMsgId = null; document.getElementById('inp').value = ''; document.getElementById('edit-banner').style.display = 'none'; };
 
         // --- CHAT MEDIA VIEWER LOGIC ---
         window.openMedia = (url, type, e) => {
             e.stopPropagation(); 
             const content = document.getElementById('media-viewer-content');
-            if (type === 'video') {
-                content.innerHTML = `<video src="${url}" controls autoplay playsinline style="width:100vw; height:100vh; object-fit:contain; outline:none;"></video>`;
-            } else {
-                content.innerHTML = `<img src="${url}" style="width:100vw; height:100vh; object-fit:contain;">`;
-            }
+            if (type === 'video') content.innerHTML = `<video src="${url}" controls autoplay playsinline style="width:100vw; height:100vh; object-fit:contain; outline:none;"></video>`;
+            else content.innerHTML = `<img src="${url}" style="width:100vw; height:100vh; object-fit:contain;">`;
             document.getElementById('media-viewer').classList.remove('hidden');
         };
 
-        window.closeMedia = () => {
-            document.getElementById('media-viewer-content').innerHTML = ''; 
-            document.getElementById('media-viewer').classList.add('hidden');
-        };
+        window.closeMedia = () => { document.getElementById('media-viewer-content').innerHTML = ''; document.getElementById('media-viewer').classList.add('hidden'); };
 
         // --- REPLY UI LOGIC ---
         window.initiateReply = (text, name) => {
             replyingTo = { text, name };
-            document.getElementById('reply-preview-name').innerText = name;
-            document.getElementById('reply-preview-text').innerText = text;
-            document.getElementById('reply-preview').style.display = 'block';
-            document.getElementById('inp').focus(); 
+            document.getElementById('reply-preview-name').innerText = name; document.getElementById('reply-preview-text').innerText = text;
+            document.getElementById('reply-preview').style.display = 'block'; document.getElementById('inp').focus(); 
         };
 
-        window.cancelReply = () => {
-            replyingTo = null;
-            document.getElementById('reply-preview').style.display = 'none';
-        };
+        window.cancelReply = () => { replyingTo = null; document.getElementById('reply-preview').style.display = 'none'; };
 
-        document.getElementById('story-reply-input').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); window.sendStoryReply(); }
+        // --- UPGRADED STORY REPLY LOGIC (Pauses Story while typing) ---
+        const storyReplyInput = document.getElementById('story-reply-input');
+
+        // 1. Send reply on Enter
+        storyReplyInput.addEventListener('keypress', function(e) { 
+            if (e.key === 'Enter') { e.preventDefault(); window.sendStoryReply(); } 
         });
 
+        // 2. Pause story when clicking the input (Focus)
+        storyReplyInput.addEventListener('focus', () => {
+            clearTimeout(storyTimer); // Stop the 5-second countdown
+            
+            // Freeze the visual progress bar exactly where it is
+            const currentBar = document.getElementById(`prog-${activeStoryIndex}`);
+            if(currentBar) {
+                const computedWidth = window.getComputedStyle(currentBar).width;
+                currentBar.style.transition = 'none';
+                currentBar.style.width = computedWidth;
+            }
+            
+            // If it's a video story, pause the video!
+            const video = document.querySelector('#media-container video');
+            if(video) video.pause();
+        });
+
+        // 3. Resume story when clicking away or sending (Blur)
+        storyReplyInput.addEventListener('blur', () => {
+            // Only resume if the viewer is still actually open
+            if (!document.getElementById('story-viewer').classList.contains('hidden')) {
+                storyTimer = setTimeout(window.nextStory, 5000); // Start counting again
+                
+                // Resume the visual progress bar
+                const currentBar = document.getElementById(`prog-${activeStoryIndex}`);
+                if(currentBar) {
+                    currentBar.style.transition = 'width 5s linear';
+                    currentBar.style.width = '100%';
+                }
+                
+                // Resume the video if it's a video story
+                const video = document.querySelector('#media-container video');
+                if(video) video.play();
+            }
+        });
         // ==========================================
         // 1. FRIEND LIST
         // ==========================================
         function loadFriendsList() {
             onSnapshot(collection(db, "users", currentUser.uid, "friends"), async (snap) => {
                 const listEl = document.getElementById('chat-list');
-                listEl.innerHTML = '';
-                myFriendUids = []; 
+                listEl.innerHTML = ''; myFriendUids = []; 
                 
                 for (let d of snap.docs) {
-                    const f = d.data();
-                    myFriendUids.push(f.uid); 
-                    
+                    const f = d.data(); myFriendUids.push(f.uid); 
                     const userProfile = await getDoc(doc(db, "users", f.uid));
                     const liveData = userProfile.exists() ? userProfile.data() : f;
                     
                     let hasStoryClass = '';
-                    if (liveData.lastStoryAt && Date.now() - liveData.lastStoryAt.toMillis() < 24 * 60 * 60 * 1000) {
-                        hasStoryClass = 'has-story';
-                    }
+                    if (liveData.lastStoryAt && Date.now() - liveData.lastStoryAt.toMillis() < 24 * 60 * 60 * 1000) hasStoryClass = 'has-story';
 
-                    const liveAvatar = liveData.avatar;
-                    const avatarHTML = liveAvatar && liveAvatar.startsWith('http') ? `<img src="${liveAvatar}">` : (liveAvatar || f.username[0].toUpperCase());
+                    const isOnline = liveData.online === true;
+                    const avatarBlock = getAvatarWithStatus(liveData.avatar, f.username, isOnline, hasStoryClass);
 
                     const div = document.createElement('div');
                     div.className = 'list-item';
                     div.innerHTML = `
-                        <div class="avatar ${hasStoryClass}">${avatarHTML}</div>
+                        ${avatarBlock}
                         <div class="info"><h4>${f.username}</h4></div>
                         <div id="badge-${f.uid}" class="unread-badge hidden"></div>
                     `;
-                    div.onclick = () => { f.liveAvatar = liveAvatar; startChat(f); };
+                    div.onclick = () => { f.liveAvatar = liveData.avatar; startChat(f); };
                     listEl.appendChild(div);
 
                     const uids = [currentUser.uid, f.uid].sort();
@@ -342,8 +389,7 @@
         // ==========================================
         function loadStories() {
             onSnapshot(query(collection(db, "stories"), orderBy("timestamp", "asc")), snap => {
-                groupedStories = {};
-                const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
+                groupedStories = {}; const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
                 snap.forEach(d => {
                     const s = d.data();
                     if(s.timestamp && s.timestamp.toMillis() > twentyFourHoursAgo) {
@@ -356,8 +402,7 @@
         }
 
         function renderStoryRow() {
-            const row = document.getElementById('stories-row');
-            if(!row) return;
+            const row = document.getElementById('stories-row'); if(!row) return;
             row.innerHTML = `<div style="display:flex; flex-direction:column; align-items:center; cursor:pointer;" onclick="postStatus()"><div class="insta-ring" style="background: #e5e7eb;"><div class="inner-avatar" style="color:#4f46e5; font-size:28px;">+</div></div><div class="story-user-text">Your Story</div></div>`;
             currentViewerUIDs = Object.keys(groupedStories).filter(uid => uid === currentUser.uid || myFriendUids.includes(uid));
 
@@ -365,7 +410,6 @@
                 const latestStory = groupedStories[uid][groupedStories[uid].length - 1]; 
                 const ringStyle = uid === currentUser.uid ? 'background: #ccc;' : '';
                 const avatarHTML = latestStory.avatar && latestStory.avatar.startsWith('http') ? `<img src="${latestStory.avatar}">` : latestStory.username[0].toUpperCase();
-
                 row.innerHTML += `<div style="display:flex; flex-direction:column; align-items:center; cursor:pointer;" onclick="openViewer(${index})"><div class="insta-ring" style="${ringStyle}"><div class="inner-avatar">${avatarHTML}</div></div><div class="story-user-text">${uid === currentUser.uid ? 'You' : latestStory.username}</div></div>`;
             });
         }
@@ -413,8 +457,23 @@
             const userUid = currentViewerUIDs[activeUserIndex]; const story = groupedStories[userUid][activeStoryIndex];
             const footer = document.getElementById('viewer-footer'); const delContainer = document.getElementById('story-delete-container');
             
-            if (userUid === currentUser.uid) { footer.classList.add('hidden'); delContainer.innerHTML = `<button class="story-delete-btn" onclick="deleteStory('${story.id}')">🗑️</button>`; } 
-            else { footer.classList.remove('hidden'); delContainer.innerHTML = ''; document.getElementById('story-like-btn').className = 'story-action-btn'; document.getElementById('story-like-btn').innerText = '🤍'; }
+            if (userUid === currentUser.uid) { 
+                footer.classList.add('hidden'); 
+                delContainer.innerHTML = `<button class="story-delete-btn" onclick="deleteStory('${story.id}')">🗑️</button>`; 
+            } else { 
+                footer.classList.remove('hidden'); 
+                delContainer.innerHTML = ''; 
+                
+                // Check if we already liked this specific story
+                let likedStories = JSON.parse(localStorage.getItem('likedStories') || '[]');
+                if (likedStories.includes(story.id)) {
+                    document.getElementById('story-like-btn').className = 'story-action-btn liked'; 
+                    document.getElementById('story-like-btn').innerText = '❤️'; 
+                } else {
+                    document.getElementById('story-like-btn').className = 'story-action-btn'; 
+                    document.getElementById('story-like-btn').innerText = '🤍'; 
+                }
+            }
 
             document.getElementById('viewer-avatar').innerHTML = story.avatar && story.avatar.startsWith('http') ? `<img src="${story.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : story.username[0].toUpperCase();
             document.getElementById('viewer-username').innerText = story.username;
@@ -438,10 +497,31 @@
         }
 
         window.likeStory = async () => {
-            const userUid = currentViewerUIDs[activeUserIndex]; const btn = document.getElementById('story-like-btn');
+            const userUid = currentViewerUIDs[activeUserIndex]; 
+            const story = groupedStories[userUid][activeStoryIndex];
+            const btn = document.getElementById('story-like-btn');
+            
             if (userUid === currentUser.uid || btn.classList.contains('liked')) return; 
-            btn.innerText = '❤️'; btn.classList.add('liked');
-            await addDoc(collection(db, "notifications"), { type: 'story_like', from: currentUser.uid, to: userUid, timestamp: serverTimestamp(), read: false });
+            
+            // Instantly change UI
+            btn.innerText = '❤️'; 
+            btn.classList.add('liked');
+
+            // Save to memory so it stays red forever
+            let likedStories = JSON.parse(localStorage.getItem('likedStories') || '[]');
+            if (!likedStories.includes(story.id)) {
+                likedStories.push(story.id);
+                localStorage.setItem('likedStories', JSON.stringify(likedStories));
+            }
+
+            // Send the notification to the other user
+            await addDoc(collection(db, "notifications"), { 
+                type: 'story_like', 
+                from: currentUser.uid, 
+                to: userUid, 
+                timestamp: serverTimestamp(), 
+                read: false 
+            });
         };
 
         window.sendStoryReply = async () => {
@@ -450,12 +530,12 @@
             const story = groupedStories[userUid][activeStoryIndex]; const uids = [currentUser.uid, userUid].sort(); const chatId = uids.join('_');
             
             await setDoc(doc(db, "chats", chatId), { participants: uids }, { merge: true });
-            await addDoc(collection(db, "chats", chatId, "messages"), { text: text, storyRefUrl: story.mediaUrl || null, storyRefText: story.text || null, senderId: currentUser.uid, createdAt: serverTimestamp(), deleted: false });
+            await addDoc(collection(db, "chats", chatId, "messages"), { text: text, storyRefUrl: story.mediaUrl || null, storyRefText: story.text || null, senderId: currentUser.uid, createdAt: serverTimestamp(), deleted: false, read: false });
             await setDoc(doc(db, "chats", chatId), { lastMessageSender: currentUser.uid, unread: true }, { merge: true }); alert("Reply sent to " + story.username + "!");
         };
 
         // ==========================================
-        // 3. CHAT LOGIC
+        // 3. CHAT LOGIC (With Live Header Status)
         // ==========================================
 
         async function autoStartChat(targetUid) {
@@ -470,18 +550,38 @@
             document.getElementById('no-chat-placeholder').classList.add('hidden');
             document.getElementById('active-chat-interface').classList.remove('hidden');
             document.getElementById('back').classList.remove('hidden');
-            document.getElementById('header-avatar').classList.remove('hidden');
-            
-            // SHOW THE 3-DOTS WRAPPER
+            document.getElementById('header-avatar-wrapper').classList.remove('hidden');
             document.getElementById('chat-options-wrapper').classList.remove('hidden'); 
-            
-            document.getElementById('header-avatar').innerHTML = friend.liveAvatar && friend.liveAvatar.startsWith('http') ? `<img src="${friend.liveAvatar}">` : (friend.liveAvatar || friend.username[0].toUpperCase());
-            document.getElementById('chat-name').innerText = friend.username;
+
+            if (unsubActiveUser) unsubActiveUser(); 
+
+            // LIVE HEADER STATUS
+            if (friend.uid === 'gemini-bot') {
+                document.getElementById('header-avatar').innerHTML = '✨';
+                document.getElementById('header-status-dot').style.display = 'block';
+                document.getElementById('header-status-dot').className = 'status-indicator status-online';
+                document.getElementById('chat-name').innerText = 'Gemini AI';
+                document.getElementById('chat-status').innerHTML = '<span style="color:#10b981;">Online</span>';
+            } else {
+                document.getElementById('chat-name').innerText = friend.username;
+                unsubActiveUser = onSnapshot(doc(db, "users", friend.uid), (docSnap) => {
+                    if (docSnap.exists()) {
+                        const u = docSnap.data();
+                        const isOnline = u.online === true;
+                        document.getElementById('header-avatar').innerHTML = u.avatar && u.avatar.startsWith('http') ? `<img src="${u.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : (u.avatar || u.username[0].toUpperCase());
+                        
+                        document.getElementById('header-status-dot').style.display = 'block';
+                        document.getElementById('header-status-dot').className = `status-indicator ${isOnline ? 'status-online' : 'status-offline'}`;
+                        
+                        document.getElementById('chat-status').innerHTML = isOnline 
+                            ? '<span style="color:#10b981; font-weight:600;">Online</span>' 
+                            : `Last seen: ${getRelativeTime(u.lastSeen)}`;
+                    }
+                });
+            }
 
             const uids = [currentUser.uid, friend.uid].sort(); 
             currentChatId = uids.join('_');
-            
-            // EXPOSE CURRENT CHAT ID TO WINDOW TO PREVENT BADGE FLICKERING
             window.currentChatId = currentChatId; 
             
             await setDoc(doc(db, "chats", currentChatId), { participants: uids, unread: false }, { merge: true });
@@ -493,20 +593,18 @@
             document.getElementById('no-chat-placeholder').classList.remove('hidden');
             document.getElementById('active-chat-interface').classList.add('hidden');
             document.getElementById('back').classList.add('hidden');
-            document.getElementById('header-avatar').classList.add('hidden');
-            
-            // HIDE THE 3-DOTS WRAPPER AND ANY OPEN MENU
+            document.getElementById('header-avatar-wrapper').classList.add('hidden');
             document.getElementById('chat-options-wrapper').classList.add('hidden'); 
             document.getElementById('chat-options-menu').classList.add('hidden'); 
 
             document.getElementById('chat-name').innerText = "Select a chat to start messaging";
+            document.getElementById('chat-status').innerText = ""; 
 
             window.cancelReply(); window.cancelEdit();
             if(unsubMessages) unsubMessages(); if(unsubTyping) unsubTyping(); 
+            if(unsubActiveUser) unsubActiveUser(); 
             
-            // CLEAR CHAT ID ON BACK
-            currentChatId = null;
-            window.currentChatId = null; 
+            currentChatId = null; window.currentChatId = null; 
         };
 
         function loadMessages() {
@@ -515,8 +613,16 @@
             
             unsubMessages = onSnapshot(query(collection(db, "chats", currentChatId, "messages"), orderBy("createdAt", "asc")), (snap) => {
                 const wasTyping = document.getElementById('typing-bubble'); msgsDiv.innerHTML = '';
-                snap.forEach(d => renderMsg(d.id, d.data()));
+                let unreadIds = []; 
+
+                snap.forEach(d => {
+                    const msg = d.data();
+                    renderMsg(d.id, msg);
+                    if (msg.senderId !== currentUser.uid && !msg.read && !msg.deleted) unreadIds.push(d.id);
+                });
+                
                 if(wasTyping) msgsDiv.appendChild(wasTyping); msgsDiv.scrollTop = msgsDiv.scrollHeight;
+                unreadIds.forEach(id => updateDoc(doc(db, "chats", currentChatId, "messages", id), { read: true }).catch(e=>e));
             });
         }
 
@@ -526,9 +632,8 @@
             
             let mediaHTML = '';
             if (msg.mediaUrl) {
-                if (msg.mediaUrl.match(/\.(mp4|webm|ogg|mov)$/i)) {
-                    mediaHTML = `<div style="position:relative; display:inline-block; cursor:pointer;" onclick="openMedia('${msg.mediaUrl}', 'video', event)"><video src="${msg.mediaUrl}#t=0.001" class="chat-media" preload="metadata"></video><div style="position:absolute; inset:0; margin:5px 0; border-radius:8px; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.3); color:white; font-size:30px; text-shadow:0 2px 4px rgba(0,0,0,0.5);">▶</div></div>`;
-                } else mediaHTML = `<img src="${msg.mediaUrl}" class="chat-media" loading="lazy" style="cursor:pointer;" onclick="openMedia('${msg.mediaUrl}', 'image', event)">`;
+                if (msg.mediaUrl.match(/\.(mp4|webm|ogg|mov)$/i)) mediaHTML = `<div style="position:relative; display:inline-block; cursor:pointer;" onclick="openMedia('${msg.mediaUrl}', 'video', event)"><video src="${msg.mediaUrl}#t=0.001" class="chat-media" preload="metadata"></video><div style="position:absolute; inset:0; margin:5px 0; border-radius:8px; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.3); color:white; font-size:30px;">▶</div></div>`;
+                else mediaHTML = `<img src="${msg.mediaUrl}" class="chat-media" loading="lazy" style="cursor:pointer;" onclick="openMedia('${msg.mediaUrl}', 'image', event)">`;
             }
 
             let storyRefHTML = '';
@@ -542,16 +647,22 @@
 
             const isLong = msg.text && (msg.text.length > 50 || msg.text.includes('\n'));
             const textHTML = msg.text ? `<div style="white-space: ${isLong ? 'pre-wrap' : 'normal'}">${msg.text}</div>` : '';
-            
             const editTag = msg.edited && !msg.deleted ? `<span style="font-size:10px; opacity:0.6; margin-left:5px; font-style:italic;">(edited)</span>` : '';
 
             let timeString = '';
             if (msg.createdAt) timeString = msg.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            const timeHTML = `<span class="msg-time">${timeString}</span>`;
+            
+            let seenIndicator = '';
+            if (isMe && !msg.deleted) {
+                seenIndicator = msg.read 
+                    ? `<span style="color:#3b82f6; margin-left:4px; font-weight:bold; font-size:12px;">✓✓</span>` 
+                    : `<span style="color:#9ca3af; margin-left:4px; font-weight:bold; font-size:12px;">✓✓</span>`;
+            }
+
+            const timeHTML = `<span class="msg-time" style="display:flex; align-items:center; justify-content:flex-end;">${timeString} ${seenIndicator}</span>`;
 
             const div = document.createElement('div');
             div.className = `msg ${isMe ? 'sent' : 'received'} ${msg.deleted ? 'deleted' : ''}`;
-            
             div.innerHTML = `${msg.deleted ? '<i>This message was deleted</i>' : quotedHTML + storyRefHTML + mediaHTML + textHTML + editTag}${timeHTML}`;
             
             div.addEventListener('click', (e) => { e.stopPropagation(); window.openMsgMenu(e, id, msg, isMe); });
@@ -575,19 +686,16 @@
         }
 
         document.getElementById('form').onsubmit = async (e) => {
-            e.preventDefault();
-            const text = document.getElementById('inp').value.trim();
+            e.preventDefault(); const text = document.getElementById('inp').value.trim();
             if(!text || !currentChatId) return;
-            
             document.getElementById('inp').value = '';
             if(activeChatUser.uid !== "gemini-bot") updateTypingStatus(false);
 
             if (editingMsgId) {
-                await updateDoc(doc(db, "chats", currentChatId, "messages", editingMsgId), { text: text, edited: true });
-                window.cancelEdit();
+                await updateDoc(doc(db, "chats", currentChatId, "messages", editingMsgId), { text: text, edited: true }); window.cancelEdit();
             } else {
                 await addDoc(collection(db, "chats", currentChatId, "messages"), { 
-                    text: text, senderId: currentUser.uid, createdAt: serverTimestamp(), deleted: false,
+                    text: text, senderId: currentUser.uid, createdAt: serverTimestamp(), deleted: false, read: false,
                     replyToText: replyingTo ? replyingTo.text : null, replyToName: replyingTo ? replyingTo.name : null
                 });
                 window.cancelReply(); 
@@ -600,9 +708,7 @@
         document.getElementById('attach-btn').onclick = () => chatFileInput.click();
 
         chatFileInput.onchange = async (e) => {
-            const file = e.target.files[0];
-            if(!file || !currentChatId) return;
-
+            const file = e.target.files[0]; if(!file || !currentChatId) return;
             const loadingId = "load_" + Date.now();
             document.getElementById('msgs').innerHTML += `<div id="${loadingId}" class="msg sent" style="opacity:0.7"><i>Uploading media...</i></div>`;
             document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
@@ -610,9 +716,8 @@
             try {
                 const formData = new FormData(); formData.append('file', file); formData.append('upload_preset', UPLOAD_PRESET);
                 const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`, { method: 'POST', body: formData });
-                
                 await addDoc(collection(db, "chats", currentChatId, "messages"), { 
-                    mediaUrl: (await res.json()).secure_url, text: "", senderId: currentUser.uid, createdAt: serverTimestamp(), deleted: false,
+                    mediaUrl: (await res.json()).secure_url, text: "", senderId: currentUser.uid, createdAt: serverTimestamp(), deleted: false, read: false,
                     replyToText: replyingTo ? replyingTo.text : null, replyToName: replyingTo ? replyingTo.name : null 
                 });
                 window.cancelReply();
@@ -644,55 +749,23 @@
 
         window.del = async (id) => { if(confirm("Delete this message?")) await updateDoc(doc(db, "chats", currentChatId, "messages", id), { deleted: true, text: "", mediaUrl: null, storyRefUrl: null, storyRefText: null, replyToText: null, replyToName: null }); };
 
-        // --- UPGRADED GEMINI AI LOGIC ---
         async function askGemini(text) {
-            // 1. Alert you immediately if the key is missing
-            if(!GEMINI_API_KEY || GEMINI_API_KEY.includes("YOUR")) {
-                alert("⚠️ Please add your Gemini API Key in config.js!");
-                return;
-            }
-
-            // Show typing indicator
+            if(!GEMINI_API_KEY || GEMINI_API_KEY.includes("YOUR")) return alert("⚠️ Please add your Gemini API Key in config.js!");
             const typeDiv = document.createElement('div'); typeDiv.id = 'ai-type'; typeDiv.className = 'msg received';
             typeDiv.innerHTML = `<div class="typing-indicator"><span></span><span></span><span></span></div>`;
-            document.getElementById('msgs').appendChild(typeDiv); 
-            document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
+            document.getElementById('msgs').appendChild(typeDiv); document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
 
             try {
-                // Using the highly stable 1.5-flash model
                 const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-                    method: 'POST', 
-                    headers: {'Content-Type': 'application/json'}, 
-                    body: JSON.stringify({ contents: [{ parts: [{ text }] }] })
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ contents: [{ parts: [{ text }] }] })
                 });
-
-                // Catch API connection errors (like Invalid Key or Quota Exceeded)
                 if (!res.ok) throw new Error(`API Error: ${res.status}`);
-
                 const data = await res.json();
                 const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response.";
-
-                // Save AI response to database
-                await addDoc(collection(db, "chats", currentChatId, "messages"), { 
-                    text: aiResponse, 
-                    senderId: "gemini-bot", 
-                    createdAt: serverTimestamp(), 
-                    deleted: false 
-                });
-                
+                await addDoc(collection(db, "chats", currentChatId, "messages"), { text: aiResponse, senderId: "gemini-bot", createdAt: serverTimestamp(), deleted: false });
             } catch(e) {
-                console.error("Gemini AI Error:", e);
-                // Send an error message straight to the chat so you know it broke!
-                await addDoc(collection(db, "chats", currentChatId, "messages"), { 
-                    text: "⚠️ Connection to Gemini failed. Press F12 to check the console for details.", 
-                    senderId: "gemini-bot", 
-                    createdAt: serverTimestamp(), 
-                    deleted: false 
-                });
-            } finally { 
-                // Always remove the typing bubble
-                document.getElementById('ai-type')?.remove(); 
-            }
+                await addDoc(collection(db, "chats", currentChatId, "messages"), { text: "⚠️ Connection to Gemini failed.", senderId: "gemini-bot", createdAt: serverTimestamp(), deleted: false });
+            } finally { document.getElementById('ai-type')?.remove(); }
         }
     </script>
 </body>
