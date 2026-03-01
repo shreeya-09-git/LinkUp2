@@ -24,18 +24,21 @@
         console.log("Auth Script Loading..."); 
 
         import { auth, db } from "./config.js";
-        import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        // 1. Added setPersistence and browserSessionPersistence
+        import { 
+            signInWithEmailAndPassword, 
+            createUserWithEmailAndPassword, 
+            onAuthStateChanged,
+            setPersistence,
+            browserSessionPersistence 
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        
         import { doc, setDoc, query, collection, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        // 1. Prevent automatic redirect during sign-up
-        let isProcessingForm = false; 
-
-        // Redirect if ALREADY logged in (when they first open the app)
-        onAuthStateChanged(auth, u => { 
-            if(u && !isProcessingForm) {
-                window.location.href = "chats.html"; 
-            }
-        });
+        // 2. FORCE "SESSION" PERSISTENCE
+        // This ensures the login is forgotten when the tab/browser is closed.
+        setPersistence(auth, browserSessionPersistence)
+            .catch((error) => console.error("Persistence Error:", error));
 
         let isLogin = true;
         const els = { 
@@ -44,6 +47,9 @@
             toggle: document.getElementById('toggle'),
             error: document.getElementById('error')
         };
+
+        // --- THE AUTO-REDIRECT HAS BEEN REMOVED FROM HERE ---
+        // We removed onAuthStateChanged redirect so it only moves when you CLICK the button.
 
         // Toggle Login / Signup
         els.toggle.onclick = () => {
@@ -62,28 +68,27 @@
             els.btn.disabled = true; 
             els.btn.innerText = "Processing...";
             
-            // Tell the app to wait for us to finish database writes
-            isProcessingForm = true; 
-
             const email = document.getElementById('email').value;
             const pass = document.getElementById('pass').value;
 
             try {
                 if(isLogin) {
+                    // Sign in and THEN redirect manually
                     await signInWithEmailAndPassword(auth, email, pass);
-                    window.location.href = "chats.html"; // Manual redirect after success
+                    window.location.href = "chats.html"; 
                 } else {
                     const userVal = els.user.value.trim().toLowerCase();
                     if(userVal.length < 3) throw new Error("Username must be at least 3 characters.");
                     
                     // Check if username is taken
                     const q = query(collection(db, "users"), where("username", "==", userVal));
-                    if(!(await getDocs(q)).empty) throw new Error("Username is already taken!");
+                    const querySnapshot = await getDocs(q);
+                    if(!querySnapshot.empty) throw new Error("Username is already taken!");
                     
                     // Create Account
                     const cred = await createUserWithEmailAndPassword(auth, email, pass);
                     
-                    // WAITS for the database to finish saving...
+                    // Save User Data
                     await setDoc(doc(db, "users", cred.user.uid), { 
                         username: userVal, 
                         email: email, 
@@ -91,7 +96,7 @@
                         avatar: userVal[0].toUpperCase() 
                     });
 
-                    // NOW we redirect!
+                    // Redirect only after successful DB write
                     window.location.href = "chats.html";
                 }
             } catch(err) {
@@ -101,7 +106,6 @@
                 
                 els.btn.disabled = false; 
                 els.btn.innerText = isLogin ? "Login" : "Sign Up";
-                isProcessingForm = false; // Reset if it failed
             }
         };
     </script>
