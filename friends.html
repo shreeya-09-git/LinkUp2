@@ -6,20 +6,66 @@
     <title>Friends - FireChat Pro</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <style>
+        @media(min-width: 768px) { #mobile-back { display: none !important; } }
+        
+        [data-theme="dark"] .remove-btn { background: #374151 !important; border-color: #ef4444 !important; color: #ef4444 !important; }
+        [data-theme="dark"] .remove-btn:hover { background: #ef4444 !important; color: #ffffff !important; }
+        
+        /* Search Bar Styles */
+        .search-input { width: 100%; padding: 12px 15px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-color); color: var(--text-color); font-family: 'Inter', sans-serif; font-size: 14px; outline: none; transition: 0.2s; box-sizing: border-box; }
+        .search-input:focus { border-color: #a855f7; box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.2); }
+        .avatar-container {
+            position: relative;
+            width: 40px;
+            height: 40px;
+        }
+        .status-indicator {
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 2px solid white; /* Creates a gap effect */
+        }
+        .online { background-color: #10b981; }
+        .offline { background-color: #9ca3af; }
+    </style>
 </head>
 <body>
-    <div class="page-container">
-        <div class="header">Friends</div>
-
-        <div style="padding:15px; border-bottom:1px solid #eee;">
-            <div style="display:flex; gap:10px;">
-                <input id="search" class="input-field" placeholder="Search username..." style="margin:0;">
-                <button id="add-btn" class="btn btn-primary">Add</button>
-            </div>
+    <div class="page-container chats-container chat-active">
+        
+        <div id="left-pane" class="left-pane">
+            <div class="header">Messages</div>
+            <div id="chat-list"><div style="padding: 20px; text-align: center; color: #999; font-size: 14px;">Loading chats...</div></div>
         </div>
 
-        <div id="requests" style="background:#fff1f2;"></div>
-        <div id="list"></div>
+        <div id="conversation" class="right-pane">
+            <div class="header">
+                <button id="mobile-back" onclick="window.location.href='chats.html'" class="btn" style="font-size:20px; background:none; border:none; padding-right:15px; cursor:pointer;">←</button>
+                <span style="font-weight: 700;">My Friends</span>
+            </div>
+
+            <div style="flex:1; overflow-y:auto; padding: 20px; padding-bottom: 80px;">
+                
+                <div class="notif-section-title" style="margin-bottom: 10px; font-size: 12px; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Find New Friends</div>
+                <div style="margin-bottom: 30px;">
+                <div id="pending-section" style="display:none; margin-bottom: 30px;">
+                    <div class="notif-section-title" style="margin-bottom: 10px; font-size: 12px; color: #f59e0b; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Incoming Requests</div>
+                    <div id="pending-list" style="background: var(--bg-color); border-radius: 8px; border: 1px solid #f59e0b;"></div>
+                </div>
+                    <input type="text" id="search-users" class="search-input" placeholder="🔍 Search by username..." autocomplete="off">
+                    <div id="search-results" style="margin-top: 8px; background: var(--bg-color); border-radius: 8px; overflow: hidden;"></div>
+                </div>
+
+                <div class="notif-section-title" style="margin-bottom: 10px; font-size: 12px; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Manage Connections</div>
+                <div id="main-friends-list" style="background: var(--bg-color); border-radius: 8px;">
+                    <div style="padding: 20px; text-align: center; color: #999; font-size: 14px;">Loading friends...</div>
+                </div>
+
+            </div>
+        </div>
     </div>
 
     <script type="module" src="nav.js"></script>
@@ -27,131 +73,301 @@
     <script type="module">
         import { auth, db } from "./config.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { collection, query, where, onSnapshot, addDoc, doc, setDoc, deleteDoc, getDocs, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        // Notice: I added getDocs, addDoc, and serverTimestamp to your imports!
+        import { 
+            collection, doc, getDoc, getDocs, onSnapshot, 
+            deleteDoc, addDoc, serverTimestamp, query, where, setDoc 
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         let currentUser = null;
 
-        // AUTH CHECK
         onAuthStateChanged(auth, u => {
-            if(!u) {
-                window.location.href = "index.html";
-            } else {
+            if(!u) window.location.href = "index.html";
+            else {
                 currentUser = u;
-                loadFriends();
-                loadRequests();
+                loadLeftPaneChats(); 
+                loadManageFriends();
+                listenForRequests(); // <-- ADD THIS LINE
             }
         });
+        // ==========================================
+        // NEW: LIVE PENDING REQUESTS SYNC
+        // ==========================================
+        function listenForRequests() {
+            const q = query(collection(db, "requests"), where("to", "==", currentUser.uid));
+    
+            onSnapshot(q, (snap) => {
+                const pendingSection = document.getElementById('pending-section');
+                const pendingList = document.getElementById('pending-list');
+        
+                if (snap.empty) {
+                    pendingSection.style.display = 'none';
+                    return;
+                }
 
-        // --- SEND FRIEND REQUEST ---
-        document.getElementById('add-btn').onclick = async () => {
-            const term = document.getElementById('search').value.toLowerCase().trim();
-            if(!term) return;
-            
-            const snap = await getDocs(query(collection(db, "users"), where("username", "==", term)));
-            if(snap.empty) return alert("User not found");
-            
-            const target = snap.docs[0].data();
-            if(target.uid === currentUser.uid) return alert("You cannot add yourself.");
-            
-            // Send Request
-            await addDoc(collection(db, "requests"), { 
-                from: currentUser.uid, 
-                fromName: auth.currentUser.email.split('@')[0], 
-                to: target.uid, 
-                status: 'pending' 
-            });
-            alert("Friend request sent!");
-            document.getElementById('search').value = '';
-        };
+                pendingSection.style.display = 'block';
+                pendingList.innerHTML = '';
 
-        // --- LOAD INCOMING REQUESTS ---
-        function loadRequests() {
-            onSnapshot(query(collection(db, "requests"), where("to", "==", currentUser.uid)), snap => {
-                const el = document.getElementById('requests');
-                el.innerHTML = '';
-                snap.forEach(d => {
+                snap.forEach(async (d) => {
                     const req = d.data();
-                    el.innerHTML += `
-                    <div class="list-item">
-                        <div class="info" style="font-size: 14px;">Req from: <b>${req.fromName}</b></div>
-                        <div style="display:flex; gap:8px;">
-                            <button onclick="window.acc('${d.id}','${req.from}')" class="btn btn-primary" style="padding: 6px 12px; font-size:13px;">Accept</button>
-                            <button onclick="window.rej('${d.id}')" class="btn" style="padding: 6px 12px; font-size:13px; background:#fef2f2; color:#dc2626; border:1px solid #fecaca;">Reject</button>
+                    const senderDoc = await getDoc(doc(db, "users", req.from));
+                    const s = senderDoc.data();
+                    const avatarHTML = s.avatar && s.avatar.startsWith('http') ? `<img src="${s.avatar}">` : (s.avatar || s.username[0].toUpperCase());
+
+                    const div = document.createElement('div');
+                    div.className = 'list-item';
+                    div.innerHTML = `
+                        <div class="avatar">${avatarHTML}</div>
+                        <div class="info"><h4>${s.username}</h4><p style="font-size:12px; color:#999;">Sent you a request</p></div>
+                        <div style="display:flex; gap:10px;">
+                            <button onclick="window.acceptReq('${d.id}', '${req.from}', '${s.username}', '${s.avatar || ''}')" class="btn btn-primary" style="padding:5px 10px; font-size:12px; background:#10b981; border:none;">Accept</button>
+                            <button onclick="window.declineReq('${d.id}')" class="btn" style="padding:5px 10px; font-size:12px; background:#ef4444; color:white; border:none;">Decline</button>
                         </div>
-                    </div>`;
+                    `;
+                    pendingList.appendChild(div);
                 });
             });
         }
 
-        // --- ACCEPT FRIEND REQUEST (TWO-WAY SYNC) ---
-        window.acc = async (rid, senderUid) => {
+        // ==========================================
+        // ACCEPT REQUEST (The Two-Way Handshake)
+        // ==========================================
+        window.acceptReq = async (reqId, senderUid, senderName, senderAvatar) => {
+            console.log("Accepting request from:", senderName);
+            
             try {
-                // 1. Get both users' profile data
-                const senderDoc = await getDoc(doc(db, "users", senderUid));
-                const myDoc = await getDoc(doc(db, "users", currentUser.uid));
-                
-                // Fallbacks just in case data is missing
-                const senderData = senderDoc.exists() ? senderDoc.data() : { username: "User", avatar: "" };
-                const myData = myDoc.exists() ? myDoc.data() : { username: "User", avatar: "" };
-                
-                // 2. Add the sender to YOUR friends list
-                await setDoc(doc(db, "users", currentUser.uid, "friends", senderUid), { 
-                    uid: senderUid, 
-                    username: senderData.username, 
-                    avatar: senderData.avatar || senderData.username[0].toUpperCase() 
+                // 1. Get your own profile data first
+                const myProfile = await getDoc(doc(db, "users", currentUser.uid));
+                if (!myProfile.exists()) throw new Error("Your profile not found");
+                const myData = myProfile.data();
+
+                // 2. Create the friend link in YOUR collection
+                await setDoc(doc(db, "users", currentUser.uid, "friends", senderUid), {
+                    uid: senderUid,
+                    username: senderName,
+                    avatar: senderAvatar || ""
                 });
-                
-                // 3. Add YOU to the SENDER'S friends list
-                await setDoc(doc(db, "users", senderUid, "friends", currentUser.uid), { 
-                    uid: currentUser.uid, 
-                    username: myData.username, 
-                    avatar: myData.avatar || myData.username[0].toUpperCase() 
+
+                // 3. Create the friend link in THEIR collection (Two-way sync)
+                await setDoc(doc(db, "users", senderUid, "friends", currentUser.uid), {
+                    uid: currentUser.uid,
+                    username: myData.username,
+                    avatar: myData.avatar || ""
                 });
+
+                // 4. Delete the now-finished request
+                await deleteDoc(doc(db, "requests", reqId));
                 
-                // 4. Delete the pending request so it disappears from the list
-                await deleteDoc(doc(db, "requests", rid));
+                console.log("Friendship finalized!");
+            } catch (e) {
+                console.error("Failed to accept friend:", e);
+                alert("Error accepting request. Check console.");
+            }
+        };
+
+        window.declineReq = async (reqId) => {
+            try {
+                await deleteDoc(doc(db, "requests", reqId));
+            } catch (e) {
+                console.error("Decline failed:", e);
+            }
+        };
+
+        // ==========================================
+        // 1. LIVE SEARCH LOGIC (With Two-Way Sync)
+        // ==========================================
+        const searchInput = document.getElementById('search-users');
+        const searchResults = document.getElementById('search-results');
+        let searchTimeout = null;
+
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout); 
+            const searchTerm = e.target.value.trim().toLowerCase();
+            
+            if (!searchTerm) {
+                searchResults.innerHTML = '';
+                return;
+            }
+
+            searchTimeout = setTimeout(async () => {
+                searchResults.innerHTML = '<div style="padding: 15px; text-align: center; font-size: 13px; color: #9ca3af;">Searching...</div>';
                 
-                alert("Friend request accepted! You can now chat.");
+                try {
+                    // 1. Fetch all users
+                    const snap = await getDocs(collection(db, "users"));
+                    
+                    // 2. TWO-WAY SYNC: Check existing friends
+                    const myFriendsSnap = await getDocs(collection(db, "users", currentUser.uid, "friends"));
+                    const myFriends = myFriendsSnap.docs.map(d => d.id);
+
+                    // 3. TWO-WAY SYNC: Check pending requests (Sent & Received)
+                    const sentQuery = query(collection(db, "requests"), where("from", "==", currentUser.uid));
+                    const sentRequests = (await getDocs(sentQuery)).docs.map(d => d.data().to);
+
+                    const receivedQuery = query(collection(db, "requests"), where("to", "==", currentUser.uid));
+                    const receivedRequests = (await getDocs(receivedQuery)).docs.map(d => d.data().from);
+
+                    let resultsHTML = '';
+                    let matchCount = 0;
+
+                    snap.forEach(d => {
+                        const u = d.data();
+                        if (d.id === currentUser.uid) return; // Don't show yourself
+
+                        if (u.username && u.username.toLowerCase().includes(searchTerm)) {
+                            matchCount++;
+                            const avatarHTML = u.avatar && u.avatar.startsWith('http') ? `<img src="${u.avatar}">` : (u.avatar || u.username[0].toUpperCase());
+
+                            // 4. SMART UI: Change the button based on the two-way relationship state
+                            let buttonHTML = '';
+                            if (myFriends.includes(d.id)) {
+                                buttonHTML = `<button disabled class="btn" style="padding: 6px 12px; font-size:12px; background:var(--border); color:var(--text-color); border:none; opacity: 0.7;">Friends ✓</button>`;
+                            } else if (sentRequests.includes(d.id)) {
+                                buttonHTML = `<button disabled class="btn" style="padding: 6px 12px; font-size:12px; background:#3b82f6; color:white; border:none; opacity: 0.8;">Request Sent</button>`;
+                            } else if (receivedRequests.includes(d.id)) {
+                                buttonHTML = `<button onclick="window.location.href='notifications.html'" class="btn" style="padding: 6px 12px; font-size:12px; background:#f59e0b; color:white; border:none; cursor:pointer;">Accept Request</button>`;
+                            } else {
+                                buttonHTML = `<button onclick="window.sendRequest('${d.id}', this)" class="btn btn-primary" style="padding: 6px 12px; font-size:12px; transition: 0.2s;">Add Friend</button>`;
+                            }
+
+                            resultsHTML += `
+                            <div class="list-item" style="border: 1px solid var(--border); border-bottom: none; border-radius: 0;">
+                                <div class="avatar">${avatarHTML}</div>
+                                <div class="info">
+                                    <h4 style="margin:0; font-size: 15px;">${u.username}</h4>
+                                </div>
+                                ${buttonHTML}
+                            </div>`;
+                        }
+                    });
+
+                    if (matchCount > 0) {
+                        searchResults.innerHTML = resultsHTML;
+                        if (searchResults.firstElementChild) searchResults.firstElementChild.style.borderTopLeftRadius = '8px';
+                        if (searchResults.firstElementChild) searchResults.firstElementChild.style.borderTopRightRadius = '8px';
+                        if (searchResults.lastElementChild) {
+                            searchResults.lastElementChild.style.borderBottom = '1px solid var(--border)';
+                            searchResults.lastElementChild.style.borderBottomLeftRadius = '8px';
+                            searchResults.lastElementChild.style.borderBottomRightRadius = '8px';
+                        }
+                    } else {
+                        searchResults.innerHTML = '<div style="padding: 15px; text-align: center; font-size: 13px; color: #9ca3af;">No users found.</div>';
+                    }
+
+                } catch (error) {
+                    console.error("Search error:", error);
+                    searchResults.innerHTML = '<div style="padding: 15px; text-align: center; font-size: 13px; color: #ef4444;">Failed to search. Check connection.</div>';
+                }
+            }, 500); 
+        });
+
+        // ==========================================
+        // 2. SEND FRIEND REQUEST LOGIC
+        // ==========================================
+        window.sendRequest = async (targetUid, btnElement) => {
+            btnElement.innerText = "Sending...";
+            btnElement.disabled = true;
+
+            try {
+                // First, check if you are ALREADY friends!
+                const friendCheck = await getDoc(doc(db, "users", currentUser.uid, "friends", targetUid));
+                if (friendCheck.exists()) {
+                    btnElement.innerText = "Already Friends";
+                    btnElement.style.background = "#6b7280"; 
+                    btnElement.style.borderColor = "#6b7280";
+                    return;
+                }
+
+                // Get your own name so the other person knows who sent it
+                const myProfile = await getDoc(doc(db, "users", currentUser.uid));
+                const myName = myProfile.exists() ? myProfile.data().username : "Someone";
+
+                // Add the request to the database
+                await addDoc(collection(db, "requests"), {
+                    from: currentUser.uid,
+                    fromName: myName,
+                    to: targetUid,
+                    timestamp: serverTimestamp(),
+                    seen: false
+                });
+
+                // Instant UI Success Feedback
+                btnElement.innerText = "Sent ✓";
+                btnElement.style.background = "#10b981"; // Success Green
+                btnElement.style.borderColor = "#10b981";
+
             } catch (error) {
-                console.error("Error accepting friend request:", error);
-                alert("Failed to accept request. Check your internet connection.");
+                console.error("Request error:", error);
+                alert("Failed to send request.");
+                btnElement.innerText = "Add Friend";
+                btnElement.disabled = false;
             }
         };
 
-        // --- REJECT REQUEST ---
-        window.rej = async (rid) => {
-            if(confirm("Are you sure you want to reject this friend request?")) {
-                // Simply delete the request without adding them to the friends list
-                await deleteDoc(doc(db, "requests", rid));
-            }
-        };
-
-        // --- LOAD FRIENDS LIST WITH LIVE AVATARS ---
-        function loadFriends() {
+        // ==========================================
+        // 3. EXISTING LEFT PANE LOGIC
+        // ==========================================
+        function loadLeftPaneChats() {
             onSnapshot(collection(db, "users", currentUser.uid, "friends"), async (snap) => {
-                const el = document.getElementById('list');
-                el.innerHTML = '';
+                const listEl = document.getElementById('chat-list');
+                listEl.innerHTML = '';
                 
                 for (let d of snap.docs) {
                     const f = d.data();
-                    
-                    // Fetch the live profile to get their latest picture
                     const userProfile = await getDoc(doc(db, "users", f.uid));
-                    const liveAvatar = userProfile.exists() ? userProfile.data().avatar : f.avatar;
-                    
-                    // Check if avatar is an image URL or a letter
-                    const avatarHTML = liveAvatar && liveAvatar.startsWith('http') 
-                        ? `<img src="${liveAvatar}">` 
-                        : (liveAvatar || f.username[0].toUpperCase());
+                    const liveData = userProfile.exists() ? userProfile.data() : f;
+                    const avatarHTML = liveData.avatar && liveData.avatar.startsWith('http') ? `<img src="${liveData.avatar}">` : (liveData.avatar || f.username[0].toUpperCase());
 
-                    el.innerHTML += `
-                    <div class="list-item" onclick="location.href='chats.html?uid=${f.uid}'">
-                        <div class="avatar">${avatarHTML}</div>
-                        <div class="info"><h4>${f.username}</h4></div>
-                    </div>`;
+                    const div = document.createElement('div');
+                    div.className = 'list-item';
+                    div.innerHTML = `<div class="avatar">${avatarHTML}</div><div class="info"><h4>${f.username}</h4></div>`;
+                    div.onclick = () => { window.location.href = `chats.html?uid=${f.uid}`; };
+                    listEl.appendChild(div);
                 }
             });
         }
+
+        // ==========================================
+        // 4. EXISTING MANAGE FRIENDS LOGIC
+        // ==========================================
+        function loadManageFriends() {
+            onSnapshot(collection(db, "users", currentUser.uid, "friends"), async (snap) => {
+                const mainListEl = document.getElementById('main-friends-list');
+                if (snap.empty) { mainListEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #9ca3af;">You have no friends yet.</div>'; return; }
+
+                let tempHTML = '';
+                for (let d of snap.docs) {
+                    const f = d.data();
+                    const userProfile = await getDoc(doc(db, "users", f.uid));
+                    const liveData = userProfile.exists() ? userProfile.data() : f;
+                    const avatarHTML = liveData.avatar && liveData.avatar.startsWith('http') ? `<img src="${liveData.avatar}">` : (liveData.avatar || f.username[0].toUpperCase());
+
+                    tempHTML += `
+                    <div class="list-item" style="border: 1px solid var(--border); border-bottom: none; border-radius: 0;">
+                        <div class="avatar">${avatarHTML}</div>
+                        <div class="info"><h4 style="margin:0; font-size: 15px;">${f.username}</h4></div>
+                        <button onclick="window.removeFriend('${f.uid}', '${f.username}', this)" class="btn remove-btn" style="padding: 6px 12px; font-size:12px; border:1px solid #fecaca; transition: 0.2s; cursor: pointer;">Remove</button>
+                    </div>`;
+                }
+                mainListEl.innerHTML = tempHTML;
+                
+                if (mainListEl.firstElementChild) { mainListEl.firstElementChild.style.borderTopLeftRadius = '8px'; mainListEl.firstElementChild.style.borderTopRightRadius = '8px'; }
+                if (mainListEl.lastElementChild) { mainListEl.lastElementChild.style.borderBottom = '1px solid var(--border)'; mainListEl.lastElementChild.style.borderBottomLeftRadius = '8px'; mainListEl.lastElementChild.style.borderBottomRightRadius = '8px'; }
+            });
+        }
+
+        window.removeFriend = async (friendUid, friendName, btnElement) => {
+            if (confirm(`Are you sure you want to remove ${friendName}?`)) {
+                const originalText = btnElement.innerText;
+                btnElement.innerText = "Removing..."; btnElement.disabled = true;
+                try {
+                    await deleteDoc(doc(db, "users", currentUser.uid, "friends", friendUid));
+                    await deleteDoc(doc(db, "users", friendUid, "friends", currentUser.uid));
+                } catch (error) {
+                    alert("Failed to remove friend."); btnElement.innerText = originalText; btnElement.disabled = false;
+                }
+            }
+        };
     </script>
 </body>
 </html>

@@ -124,8 +124,8 @@
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc, updateDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        const CLOUD_NAME = "YOUR_CLOUD_NAME"; 
-        const UPLOAD_PRESET = "YOUR_UPLOAD_PRESET"; 
+        const CLOUD_NAME = "divihazs2"; 
+        const UPLOAD_PRESET = "linkup_media"; 
 
         let currentUser = null;
         let currentChatId = null;
@@ -644,18 +644,55 @@
 
         window.del = async (id) => { if(confirm("Delete this message?")) await updateDoc(doc(db, "chats", currentChatId, "messages", id), { deleted: true, text: "", mediaUrl: null, storyRefUrl: null, storyRefText: null, replyToText: null, replyToName: null }); };
 
+        // --- UPGRADED GEMINI AI LOGIC ---
         async function askGemini(text) {
-            if(!GEMINI_API_KEY || GEMINI_API_KEY.includes("YOUR")) return;
+            // 1. Alert you immediately if the key is missing
+            if(!GEMINI_API_KEY || GEMINI_API_KEY.includes("YOUR")) {
+                alert("⚠️ Please add your Gemini API Key in config.js!");
+                return;
+            }
+
+            // Show typing indicator
             const typeDiv = document.createElement('div'); typeDiv.id = 'ai-type'; typeDiv.className = 'msg received';
             typeDiv.innerHTML = `<div class="typing-indicator"><span></span><span></span><span></span></div>`;
-            document.getElementById('msgs').appendChild(typeDiv); document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
+            document.getElementById('msgs').appendChild(typeDiv); 
+            document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
 
             try {
-                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-                    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ contents: [{ parts: [{ text }] }] })
+                // Using the highly stable 1.5-flash model
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({ contents: [{ parts: [{ text }] }] })
                 });
-                await addDoc(collection(db, "chats", currentChatId, "messages"), { text: (await res.json()).candidates?.[0]?.content?.parts?.[0]?.text || "AI Error", senderId: "gemini-bot", createdAt: serverTimestamp(), deleted: false });
-            } catch(e) {} finally { document.getElementById('ai-type')?.remove(); }
+
+                // Catch API connection errors (like Invalid Key or Quota Exceeded)
+                if (!res.ok) throw new Error(`API Error: ${res.status}`);
+
+                const data = await res.json();
+                const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response.";
+
+                // Save AI response to database
+                await addDoc(collection(db, "chats", currentChatId, "messages"), { 
+                    text: aiResponse, 
+                    senderId: "gemini-bot", 
+                    createdAt: serverTimestamp(), 
+                    deleted: false 
+                });
+                
+            } catch(e) {
+                console.error("Gemini AI Error:", e);
+                // Send an error message straight to the chat so you know it broke!
+                await addDoc(collection(db, "chats", currentChatId, "messages"), { 
+                    text: "⚠️ Connection to Gemini failed. Press F12 to check the console for details.", 
+                    senderId: "gemini-bot", 
+                    createdAt: serverTimestamp(), 
+                    deleted: false 
+                });
+            } finally { 
+                // Always remove the typing bubble
+                document.getElementById('ai-type')?.remove(); 
+            }
         }
     </script>
 </body>

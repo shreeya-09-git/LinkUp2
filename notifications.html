@@ -6,17 +6,52 @@
     <title>Alerts - FireChat Pro</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* Animation for the empty state */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .empty-state {
+            display: none;
+            text-align: center;
+            padding: 60px 20px;
+            animation: fadeIn 0.5s ease forwards;
+        }
+        /* Style for the Clear All button in header */
+        .clear-btn {
+            background: none; 
+            border: none; 
+            color: #ef4444; 
+            font-size: 12px; 
+            cursor: pointer; 
+            font-weight: 600; 
+            padding: 5px 10px;
+            transition: opacity 0.2s;
+        }
+        .clear-btn:hover { opacity: 0.7; }
+    </style>
 </head>
 <body>
     <div class="page-container">
-        <div class="header">Notifications</div>
+        <div class="header" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Notifications</span>
+            <button id="clear-all-btn" onclick="window.clearAll()" class="clear-btn" style="display:none;">Clear All</button>
+        </div>
 
         <div class="notif-section-title" id="req-title" style="display:none;">Friend Requests</div>
-        <div id="requests-list" style="background:#fff1f2; margin-bottom: 10px;"></div>
+        <div id="requests-list" style="background:#fff1f2; margin-bottom: 10px; border-radius: 8px;"></div>
 
         <div class="notif-section-title">Recent Activity</div>
+        
         <div id="activity-list">
             <div style="padding: 20px; text-align: center; color: #999; font-size: 14px;">Loading notifications...</div>
+        </div>
+
+        <div id="empty-state" class="empty-state">
+            <div style="font-size: 50px; margin-bottom: 15px;">✨</div>
+            <h3 style="margin:0; color:var(--text-color); font-size: 18px;">All caught up!</h3>
+            <p style="color:#9ca3af; font-size:13px; margin-top:8px;">Your inbox is clean and organized.</p>
         </div>
     </div>
 
@@ -25,7 +60,8 @@
     <script type="module">
         import { auth, db } from "./config.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        // Added getDocs and writeBatch for the Clear All function
+        import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc, getDoc, updateDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         let currentUser = null;
 
@@ -39,18 +75,14 @@
         });
 
         // ==========================================
-        // 1. LOAD FRIEND REQUESTS
+        // 1. FRIEND REQUEST LOGIC
         // ==========================================
         function loadFriendRequests() {
             onSnapshot(query(collection(db, "requests"), where("to", "==", currentUser.uid)), async snap => {
                 const el = document.getElementById('requests-list');
                 const title = document.getElementById('req-title');
                 
-                if(snap.empty) { 
-                    el.innerHTML = ''; 
-                    title.style.display = 'none'; 
-                    return; 
-                }
+                if(snap.empty) { el.innerHTML = ''; title.style.display = 'none'; return; }
                 
                 title.style.display = 'block';
                 let tempHTML = ''; 
@@ -62,73 +94,92 @@
 
                     const senderProfile = await getDoc(doc(db, "users", req.from));
                     const avatarData = senderProfile.exists() ? senderProfile.data().avatar : null;
-                    const avatarHTML = avatarData && avatarData.startsWith('http') 
-                        ? `<img src="${avatarData}">` : req.fromName[0].toUpperCase();
+                    const avatarHTML = avatarData && avatarData.startsWith('http') ? `<img src="${avatarData}">` : req.fromName[0].toUpperCase();
 
                     tempHTML += `
-                    <div class="list-item">
+                    <div class="list-item" id="req-box-${d.id}">
                         <div class="avatar">${avatarHTML}</div>
                         <div class="info" style="font-size: 14px;"><b>${req.fromName}</b> wants to be friends.</div>
                         <div style="display:flex; gap:6px;">
-                            <button onclick="window.acc('${d.id}','${req.from}')" class="btn btn-primary" style="padding: 6px 10px; font-size:12px;">Accept</button>
-                            <button onclick="window.rej('${d.id}')" class="btn" style="padding: 6px 10px; font-size:12px; background:#fef2f2; color:#dc2626; border:1px solid #fecaca;">Reject</button>
+                            <button onclick="window.acc('${d.id}','${req.from}', this)" class="btn btn-primary" style="padding: 6px 10px; font-size:12px; transition: all 0.2s;">Accept</button>
+                            <button onclick="window.rej('${d.id}')" class="btn reject-btn" style="padding: 6px 10px; font-size:12px; background:#fef2f2; color:#dc2626; border:1px solid #fecaca;">Reject</button>
                         </div>
                     </div>`;
                 }
                 
-                // FIXED: Only update the screen if the content actually changed!
-                if (el.innerHTML.trim() !== tempHTML.trim()) {
+                if (el.innerHTML.trim() !== tempHTML.trim() && !window.isAccepting) {
                     el.innerHTML = tempHTML;
                 }
-
-                // Silently mark items as seen
-                unseenIds.forEach(id => {
-                    updateDoc(doc(db, "requests", id), { seen: true }).catch(e => console.log(e));
-                });
+                
+                unseenIds.forEach(id => updateDoc(doc(db, "requests", id), { seen: true }).catch(e => console.log(e)));
             });
         }
 
-        // --- ACCEPT FRIEND REQUEST (TWO-WAY SYNC) ---
-        window.acc = async (rid, senderUid) => {
+        window.acc = async (rid, senderUid, btnElement) => {
+            window.isAccepting = true; 
+            const originalText = btnElement.innerText;
+            const rejectBtn = btnElement.nextElementSibling;
+
+            btnElement.innerText = "Accepting...";
+            btnElement.style.background = "#10b981"; 
+            btnElement.disabled = true;
+            if (rejectBtn) rejectBtn.style.display = "none";
+
             try {
                 const senderDoc = await getDoc(doc(db, "users", senderUid));
                 const myDoc = await getDoc(doc(db, "users", currentUser.uid));
+                const senderData = senderDoc.exists() ? senderDoc.data() : null;
+                const myData = myDoc.exists() ? myDoc.data() : null;
                 
-                const senderData = senderDoc.exists() ? senderDoc.data() : { username: "User", avatar: "" };
-                const myData = myDoc.exists() ? myDoc.data() : { username: "User", avatar: "" };
+                if(!senderData || !myData) throw new Error("Profile not found.");
+
+                await setDoc(doc(db, "users", currentUser.uid, "friends", senderUid), { 
+                    uid: senderUid, username: senderData.username, avatar: senderData.avatar || "" 
+                });
+                await setDoc(doc(db, "users", senderUid, "friends", currentUser.uid), { 
+                    uid: currentUser.uid, username: myData.username, avatar: myData.avatar || "" 
+                });
                 
-                await setDoc(doc(db, "users", currentUser.uid, "friends", senderUid), { uid: senderUid, username: senderData.username, avatar: senderData.avatar || senderData.username[0].toUpperCase() });
-                await setDoc(doc(db, "users", senderUid, "friends", currentUser.uid), { uid: currentUser.uid, username: myData.username, avatar: myData.avatar || myData.username[0].toUpperCase() });
                 await deleteDoc(doc(db, "requests", rid));
+                btnElement.innerText = "Accepted ✓";
                 
-                alert("Friend request accepted! You can now chat.");
-            } catch (error) {
-                console.error("Error accepting friend request:", error);
-                alert("Failed to accept request. Check your internet connection.");
+                setTimeout(() => {
+                    window.isAccepting = false;
+                }, 1500);
+
+            } catch (error) { 
+                alert("Error: " + error.message); 
+                btnElement.innerText = originalText;
+                btnElement.disabled = false;
+                window.isAccepting = false;
             }
         };
 
-        // --- REJECT FRIEND REQUEST ---
         window.rej = async (rid) => { 
-            if(confirm("Reject request?")) {
-                await deleteDoc(doc(db, "requests", rid)); 
-            }
+            if(confirm("Reject request?")) await deleteDoc(doc(db, "requests", rid)); 
         };
 
         // ==========================================
-        // 2. LOAD ACTIVITY (STORY LIKES)
+        // 2. LOAD ACTIVITY & EMPTY STATE
         // ==========================================
         function loadActivity() {
             const q = query(collection(db, "notifications"), where("to", "==", currentUser.uid));
 
             onSnapshot(q, async (snap) => {
                 const el = document.getElementById('activity-list');
+                const emptyState = document.getElementById('empty-state');
+                const clearBtn = document.getElementById('clear-all-btn');
                 
                 if(snap.empty) {
-                    el.innerHTML = '<div style="padding: 20px; text-align: center; color: #999; font-size: 14px;">No new notifications.</div>';
+                    el.innerHTML = '';
+                    emptyState.style.display = 'block';
+                    clearBtn.style.display = 'none';
                     return;
                 }
                 
+                emptyState.style.display = 'none';
+                clearBtn.style.display = 'block';
+
                 let tempHTML = ''; 
                 let unreadIds = []; 
 
@@ -140,17 +191,17 @@
                 
                 for (let d of sortedDocs) {
                     const notif = d.data();
-                    
                     if (notif.read === false) unreadIds.push(d.id);
 
                     const senderProfile = await getDoc(doc(db, "users", notif.from));
-                    const senderData = senderProfile.exists() ? senderProfile.data() : { username: "Someone", avatar: "S" };
+                    const senderData = senderProfile.exists() ? senderProfile.data() : { username: "Someone", avatar: "" };
                     
                     const avatarHTML = senderData.avatar && senderData.avatar.startsWith('http') 
-                        ? `<img src="${senderData.avatar}">` : senderData.username[0].toUpperCase();
+                        ? `<img src="${senderData.avatar}">` : (senderData.username ? senderData.username[0].toUpperCase() : "?");
 
                     let message = "";
                     if (notif.type === "story_like") message = `<b>${senderData.username}</b> liked your story. ❤️`;
+                    else message = notif.message || "New activity recorded.";
 
                     let timeStr = "Just now";
                     if(notif.timestamp) {
@@ -170,17 +221,34 @@
                     </div>`;
                 }
 
-                // FIXED: Only update the screen if the content actually changed!
                 if (el.innerHTML.trim() !== tempHTML.trim()) {
                     el.innerHTML = tempHTML;
                 }
 
-                // Silently mark items as read
                 unreadIds.forEach(id => {
                     updateDoc(doc(db, "notifications", id), { read: true }).catch(e => console.log(e));
                 });
             });
         }
+
+        // ==========================================
+        // 3. CLEAR ALL LOGIC
+        // ==========================================
+        window.clearAll = async () => {
+            if (!confirm("Clear all notifications?")) return;
+
+            try {
+                const q = query(collection(db, "notifications"), where("to", "==", currentUser.uid));
+                const snap = await getDocs(q);
+                
+                const batch = writeBatch(db);
+                snap.docs.forEach(d => batch.delete(d.ref));
+                await batch.commit();
+                
+            } catch (e) {
+                console.error("Clear failed:", e);
+            }
+        };
     </script>
 </body>
 </html>

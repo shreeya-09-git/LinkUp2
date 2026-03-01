@@ -44,6 +44,15 @@
                 <label>Email Address</label>
                 <input type="email" id="edit-email" disabled>
             </div>
+
+            <div class="form-group" style="margin-bottom: 30px;">
+                <label>App Theme</label>
+                <select id="theme-selector" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #ccc; font-family: 'Inter', sans-serif; background: transparent; color: inherit; cursor: pointer; outline: none;">
+                    <option value="system" style="color: black;">📱 System Default</option>
+                    <option value="light" style="color: black;">☀️ Light</option>
+                    <option value="dark" style="color: black;">🌙 Dark</option>
+                </select>
+            </div>
             
             <button class="btn btn-primary" id="save-profile-btn" style="width:100%; padding:14px; margin-bottom:20px;">Save Changes</button>
             <button class="btn" id="logout-btn" style="width:100%; padding:14px; background:#fef2f2; color:#dc2626; border:1px solid #fecaca;">Log Out</button>
@@ -218,6 +227,30 @@
                 window.location.href = "index.html";
             }
         };
+        
+        // --- THEME SELECTOR LOGIC (BULLETPROOF) ---
+        const themeSelector = document.getElementById('theme-selector');
+        
+        // 1. Set dropdown to currently saved theme
+        themeSelector.value = localStorage.getItem('firechat-theme') || 'system';
+
+        // 2. Force the theme change immediately when clicked
+        themeSelector.addEventListener('change', (e) => {
+            const selectedTheme = e.target.value;
+            localStorage.setItem('firechat-theme', selectedTheme);
+            
+            // Apply it directly to the HTML document right now
+            if (selectedTheme === 'dark' || (selectedTheme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
+            }
+            
+            // Call the global nav.js function if it exists (for cross-tab syncing)
+            if (typeof window.applyTheme === 'function') {
+                window.applyTheme(selectedTheme); 
+            }
+        });
     </script>
 </body>
 </html>
