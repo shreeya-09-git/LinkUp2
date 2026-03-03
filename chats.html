@@ -1013,48 +1013,54 @@
         window.del = async (id) => { if(confirm("Delete this message?")) await updateDoc(doc(db, "chats", currentChatId, "messages", id), { deleted: true, text: "", mediaUrl: null, storyRefUrl: null, storyRefText: null, replyToText: null, replyToName: null }); };
 
         // 🚀 THE SECURE LOCALSTORAGE METHOD
+        // 🚀 SECURE LOCAL STORAGE METHOD
         function getGeminiKey() {
-            // Check if the phone/computer already remembers the key
             let key = localStorage.getItem("linkup_gemini_key");
             
-            // If not, pop up a box asking for it!
             if (!key) {
-                key = prompt("🔒 Developer Mode: Please enter your Gemini API Key to enable AI chat.");
+                // If there's no key saved, pop up a box to ask for it
+                key = prompt("🔒 Please paste your Gemini API Key to enable AI chat:");
                 if (key) {
                     localStorage.setItem("linkup_gemini_key", key.trim());
                 } else {
-                    alert("AI features are disabled without an API key.");
+                    alert("AI features are disabled without a key.");
                     return null;
                 }
             }
             return key;
         }
 
-        // Add a way to clear the key if you need to reset it
-        window.resetAPIKey = () => {
-            localStorage.removeItem("linkup_gemini_key");
-            alert("API Key cleared. Refresh to enter a new one.");
-        };
-
         async function askGemini(text) {
-            // Grab the key from the browser's memory
+            // Grab the secure key
             const apiKey = getGeminiKey();
-            if (!apiKey) return; // Stop if they didn't enter one
+            if (!apiKey) return; // Stop if no key
             
             const typeDiv = document.createElement('div'); typeDiv.id = 'ai-type'; typeDiv.className = 'msg received';
             typeDiv.innerHTML = `<div class="typing-indicator"><span></span><span></span><span></span></div>`;
             document.getElementById('msgs').appendChild(typeDiv); document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
 
             try {
-                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+                const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}', {
                     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ contents: [{ parts: [{ text }] }] })
                 });
+                
+                // If Google rejects the key (403), throw an error so we can catch it below
                 if (!res.ok) throw new Error(`API Error: ${res.status}`);
+                
                 const data = await res.json();
                 const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response.";
                 await addDoc(collection(db, "chats", currentChatId, "messages"), { text: aiResponse, senderId: "gemini-bot", createdAt: serverTimestamp(), deleted: false });
+            
             } catch(e) {
-                await addDoc(collection(db, "chats", currentChatId, "messages"), { text: "⚠️ Connection to Gemini failed. Check your API key.", senderId: "gemini-bot", createdAt: serverTimestamp(), deleted: false });
+                console.error(e);
+                
+                // If it's a 403, the key is bad/restricted. Wipe it so they can try a fresh one.
+                if (e.message.includes("403")) {
+                    localStorage.removeItem("linkup_gemini_key");
+                    await addDoc(collection(db, "chats", currentChatId, "messages"), { text: "⚠️ Error 403: Your API key was rejected. I wiped it from memory. Please refresh the page and enter a fresh, unrestricted key.", senderId: "gemini-bot", createdAt: serverTimestamp(), deleted: false });
+                } else {
+                    await addDoc(collection(db, "chats", currentChatId, "messages"), { text: "⚠️ Connection to Gemini failed.", senderId: "gemini-bot", createdAt: serverTimestamp(), deleted: false });
+                }
             } finally { document.getElementById('ai-type')?.remove(); }
         }
     </script>
