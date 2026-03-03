@@ -349,6 +349,15 @@ body {
     .nav-label { font-size: 10px; margin-top: 5px; }
 
     /* --- THE SPLIT PANE MAGIC (LEFT & RIGHT) --- */
+    #chat-container {
+    height: 80vh; /* Or a fixed height like 500px */
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    border: 1px solid #ccc;
+    }
+    
     .chats-container { 
         display: flex !important; 
         flex-direction: row !important; /* Forces side-by-side */
@@ -388,6 +397,7 @@ body {
     .page-container:not(.chats-container) { 
         display: block; max-width: 600px; overflow-y: auto; background: white;
     }
+    
 }
 
 /* ==========================================
@@ -449,10 +459,7 @@ body {
     padding: 6px 10px; border-radius: 4px; font-size: 12px; 
     margin-bottom: 6px; opacity: 0.8; 
 }
-.msg {
-    /* Required to prevent the swipe from making the screen scroll sideways */
-    touch-action: pan-y; 
-}
+.msg { touch-action: pan-y !important; }
 
 /* ==========================================
    11. MESSAGE CONTEXT MENU & EDITING
@@ -683,4 +690,248 @@ body {
     background: transparent !important;
     display: block !important;
     margin-top: 6px !important;
+}
+
+/* ==========================================
+   14. MOBILE SPECIFIC DARK MODE CHAT FIXES
+   ========================================== */
+@media (max-width: 767px) {
+    [data-theme="dark"] body, 
+    [data-theme="dark"] .page-container, 
+    [data-theme="dark"] .chats-container, 
+    [data-theme="dark"] .left-pane, 
+    [data-theme="dark"] .right-pane, 
+    [data-theme="dark"] #conversation,
+    [data-theme="dark"] #active-chat-interface,
+    [data-theme="dark"] #msgs,
+    [data-theme="dark"] #no-chat-placeholder {
+        background-color: #111827 !important;
+    }
+
+    [data-theme="dark"] .left-pane .header, 
+    [data-theme="dark"] .right-pane .header,
+    [data-theme="dark"] #conversation .header {
+        background-color: #1f2937 !important;
+        color: #f3f4f6 !important;
+        border-bottom: 1px solid #374151 !important;
+    }
+
+    [data-theme="dark"] .input-area, 
+    [data-theme="dark"] #form {
+        background-color: #1f2937 !important;
+        border-top: 1px solid #374151 !important;
+    }
+
+    [data-theme="dark"] #inp {
+        background-color: transparent !important;
+        color: #f3f4f6 !important;
+        border: 1px solid #4b5563 !important;
+    }
+}
+
+/* ==========================================
+   15. ACTIVE SESSIONS MODAL - DARK MODE
+   ========================================== */
+[data-theme="dark"] .session-modal,
+[data-theme="dark"] .session-list {
+    background-color: #1f2937 !important;
+    color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .session-modal-header {
+    background-color: #111827 !important;
+    border-bottom: 1px solid #374151 !important;
+}
+
+/* Force all text inside the dark modal to be white */
+[data-theme="dark"] .session-modal h3, 
+[data-theme="dark"] .session-modal span, 
+[data-theme="dark"] .session-modal div, 
+[data-theme="dark"] .session-modal p,
+[data-theme="dark"] .session-title {
+    color: #f3f4f6 !important; 
+}
+
+/* Slightly dim the subtext */
+[data-theme="dark"] .session-meta {
+    color: #9ca3af !important;
+}
+
+[data-theme="dark"] .session-item {
+    border-bottom: 1px solid #374151 !important;
+}
+
+/* Make the Log Out button look premium in dark mode */
+[data-theme="dark"] .logout-device-btn {
+    background-color: rgba(239, 68, 68, 0.1) !important;
+    border: 1px solid rgba(239, 68, 68, 0.3) !important;
+    color: #ef4444 !important;
+}
+
+[data-theme="dark"] .logout-device-btn:hover {
+    background-color: #ef4444 !important;
+    color: #ffffff !important;
+}
+
+/* ==========================================
+   16. ULTIMATE MOBILE SCROLL & LAYOUT FIX
+   ========================================== */
+@media (max-width: 767px) {
+    /* 1. Lock the main container to exactly the screen height minus the bottom nav */
+    .chats-container {
+        height: calc(100dvh - 70px) !important; /* 100dvh fixes mobile browser URL bar jumping */
+        overflow: hidden !important; /* Forces internal elements to scroll instead of the whole page */
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* 2. Ensure the active chat fills exactly that space */
+    #conversation {
+        flex: 1;
+        height: 100% !important;
+        display: flex !important;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    /* 3. Lock the header at the top */
+    #conversation .header {
+        flex-shrink: 0;
+        z-index: 100;
+    }
+
+    /* 4. Lock the interface frame */
+    #active-chat-interface {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0 !important; /* CRITICAL FLEXBOX FIX: Prevents infinite stretching */
+        overflow: hidden;
+    }
+
+    /* 5. Make ONLY the messages area scrollable */
+    #msgs {
+        flex: 1;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch; /* Smooth iOS scrolling */
+        padding-bottom: 10px !important;
+    }
+
+    /* 6. Put the input bar safely at the bottom, inline with the rest of the flex layout */
+    .input-area, #form {
+        position: relative !important; /* Removes the fixed floating bug */
+        bottom: 0 !important;
+        flex-shrink: 0 !important; /* Prevents it from getting squished by messages */
+    }
+    
+    /* 7. Allow the friend list to scroll natively when chat is NOT active */
+    #left-pane {
+        flex: 1;
+        height: 100%;
+        overflow-y: auto;
+    }
+}
+
+/* ==========================================
+   THE "FIXED POSITION" MOBILE OVERRIDE
+   ========================================== */
+@media (max-width: 767px) {
+    /* 1. Stop the background webpage from bouncing */
+    html, body {
+        overflow: hidden !important; 
+        height: 100dvh !important;
+    }
+
+    /* 2. GLUE the message bar to the screen, exactly above the bottom nav! */
+    .input-area, #form {
+        position: fixed !important;
+        bottom: 70px !important; /* Sits exactly on top of your 70px bottom nav */
+        left: 0 !important;
+        width: 100vw !important;
+        z-index: 1000 !important;
+        background-color: var(--bg-color, #ffffff) !important;
+        box-sizing: border-box !important;
+    }
+
+    /* 3. If a user is replying/editing, float it right above the input bar */
+    #reply-preview, #edit-banner {
+        position: fixed !important;
+        bottom: 125px !important; /* Floats above the input bar */
+        left: 0 !important;
+        width: 100vw !important;
+        z-index: 999 !important;
+    }
+
+    /* 4. Lock the chat window to the screen height minus the bottom nav */
+    .page-container, 
+    #conversation, 
+    #active-chat-interface {
+        display: flex !important;
+        flex-direction: column !important;
+        height: calc(100dvh - 70px) !important; 
+        max-height: calc(100dvh - 70px) !important;
+        overflow: hidden !important;
+    }
+
+    /* 5. Add massive padding to the bottom of the messages! 
+       This ensures the last message can be scrolled UP and out from behind the fixed input bar. */
+    #msgs {
+        flex: 1 !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        padding-bottom: 90px !important; /* Pushes the text up! */
+    }
+    
+    /* 6. Ensure the header stays glued to the top */
+    .header {
+        flex-shrink: 0 !important;
+    }
+}
+
+/* ==========================================
+   CLICK-TO-JUMP HIGHLIGHT ANIMATION
+   ========================================== */
+@keyframes jump-highlight {
+    0% { transform: scale(1); box-shadow: none; }
+    30% { transform: scale(1.03); box-shadow: 0 0 15px var(--primary); z-index: 10; }
+    100% { transform: scale(1); box-shadow: none; z-index: auto; }
+}
+
+.highlight-msg {
+    animation: jump-highlight 1.5s ease-out;
+}
+
+/* ==========================================
+   FULL SCREEN MOBILE CHAT (HIDES BOTTOM NAV)
+   ========================================== */
+@media (max-width: 767px) {
+    /* 1. Hide the navigation menu completely */
+    body.chat-in-session .bottom-nav {
+        display: none !important; 
+    }
+    
+    /* 2. Stretch the chat window to take up the full screen height */
+    body.chat-in-session .page-container, 
+    body.chat-in-session #conversation, 
+    body.chat-in-session #active-chat-interface {
+        height: 100dvh !important; 
+        max-height: 100dvh !important; 
+    }
+    
+    /* 3. Drop the input bar down to the very bottom edge of the phone */
+    body.chat-in-session .input-area, 
+    body.chat-in-session #form {
+        bottom: 0 !important; 
+    }
+    
+    /* 4. Lower the Reply/Edit preview boxes so they touch the input bar */
+    body.chat-in-session #reply-preview, 
+    body.chat-in-session #edit-banner {
+        bottom: 55px !important; 
+    }
+    
+    /* 5. Adjust the padding so the newest message doesn't get hidden */
+    body.chat-in-session #msgs {
+        padding-bottom: 70px !important; 
+    }
 }
