@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up | LinkUp</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* --- CSS VARIABLES & RESET --- */
+        :root {
+            --primary: #4F46E5;
+            --primary-hover: #4338CA;
+            --dark: #0F172A;
+            --light: #F8FAFC;
+            --text-gray: #94A3B8;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background-color: var(--dark);
+            color: var(--light);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        a { text-decoration: none; color: var(--primary); font-weight: 600; transition: 0.3s; }
+        a:hover { color: #818CF8; }
+
+        /* --- BACKGROUND DECORATION --- */
+        .bg-glow {
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(79, 70, 229, 0.15) 0%, rgba(15, 23, 42, 0) 70%);
+            top: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: -1;
+        }
+
+        /* --- AUTH CONTAINER --- */
+        .auth-card {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(12px);
+            padding: 2.5rem;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .logo {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: white;
+        }
+
+        .logo span { color: var(--primary); }
+
+        .subtitle {
+            color: var(--text-gray);
+            font-size: 0.95rem;
+            margin-bottom: 2rem;
+        }
+
+        /* --- FORM ELEMENTS --- */
+        .input-group {
+            text-align: left;
+            margin-bottom: 1.2rem;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-gray);
+            margin-bottom: 0.4rem;
+            font-weight: 600;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: white;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-primary {
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            padding: 0.85rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.3s;
+            margin-top: 0.5rem;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+            transform: translateY(-2px);
+        }
+
+        .footer-text {
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+            color: var(--text-gray);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="bg-glow"></div>
+
+    <div class="auth-card">
+        <div class="logo">Link<span>Up</span></div>
+        <p class="subtitle">Create an account to start chatting.</p>
+
+        <form id="register-form">
+            <div class="input-group">
+                <label for="register-name">Full Name</label>
+                <input type="text" id="register-name" placeholder="John Doe" required>
+            </div>
+
+            <div class="input-group">
+                <label for="register-email">Email</label>
+                <input type="email" id="register-email" placeholder="Enter your email" required>
+            </div>
+            
+            <div class="input-group">
+                <label for="register-password">Password</label>
+                <input type="password" id="register-password" placeholder="Create a password" required>
+            </div>
+
+            <button type="submit" class="btn-primary" id="register-btn">Sign Up</button>
+        </form>
+
+        <p class="footer-text">Already have an account? <a href="login.html">Log in</a></p>
+    </div>
+
+    <script type="module">
+        // 1. Import the connection from YOUR config file
+        import { auth, db } from "./config.js";
+        
+        // 2. Import only the specific functions needed for registration
+        import { createUserWithEmailAndPassword, updateProfile } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const registerForm = document.getElementById('register-form');
+        const registerBtn = document.getElementById('register-btn');
+
+        registerForm.addEventListener('submit', async (e) => {
+            e.preventDefault(); 
+            
+            const name = document.getElementById('register-name').value;
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+
+            registerBtn.innerText = "Creating Account...";
+            registerBtn.disabled = true;
+
+            try {
+                // A. Create the user
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const user = userCredential.user;
+
+                // B. Set their display name
+                await updateProfile(user, { displayName: name });
+
+                // C. Save them to your "users" Firestore collection
+                await setDoc(doc(db, "users", user.uid), {
+                    userId: user.uid,
+                    name: name,
+                    email: email,
+                    profileImage: "", 
+                    online: true, // Set them online immediately
+                    lastSeen: serverTimestamp(),
+                    createdAt: serverTimestamp()
+                });
+
+                // D. Redirect to the chat interface
+                window.location.href = "chats.html"; 
+
+            } catch (error) {
+                console.error(error);
+                alert("Error signing up: " + error.message);
+                registerBtn.innerText = "Sign Up";
+                registerBtn.disabled = false;
+            }
+        });
+    </script>
+
+    </body>
+</html>
