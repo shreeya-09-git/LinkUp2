@@ -87,6 +87,27 @@
             padding: 6px 12px; border-radius: 6px; font-size: 11px; cursor: pointer; 
         }
         .logout-device-btn:hover { background: #d00000; color: white !important; }
+
+        /* --- CHAT LIST UNREAD DOT --- */
+        .user-name-container {
+            display: flex;
+            align-items: center;
+            gap: 8px; /* Space between name and dot */
+        }
+
+        .unread-dot {
+            width: 10px;
+            height: 10px;
+            background-color: #EF4444; /* Vibrant Red */
+            border-radius: 50%;
+            display: none; /* Hidden by default */
+            box-shadow: 0 0 5px rgba(239, 68, 68, 0.5); /* Slight glow effect */
+        }
+
+        /* When this class is added via JavaScript, the dot appears */
+        .unread-dot.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -505,10 +526,16 @@
 
                     const div = document.createElement('div');
                     div.className = 'list-item';
+                    
+                    // 1. Updated HTML to match your new CSS classes
                     div.innerHTML = `
                         ${avatarBlock}
-                        <div class="info"><h4>${f.username}</h4></div>
-                        <div id="badge-${f.uid}" class="unread-badge hidden"></div>
+                        <div class="info" style="flex: 1;">
+                            <div class="user-name-container">
+                                <h4 style="margin: 0;">${f.username}</h4>
+                                <div id="dot-${f.uid}" class="unread-dot"></div> 
+                            </div>
+                        </div>
                     `;
                     div.onclick = () => { f.liveAvatar = liveData.avatar; startChat(f); };
                     listEl.appendChild(div);
@@ -517,15 +544,23 @@
                     const chatId = uids.join('_');
                     
                     if(chatBadgeUnsubs[chatId]) chatBadgeUnsubs[chatId]();
+                    
+                    // 2. Updated Firestore Listener (Step 3 Logic)
                     chatBadgeUnsubs[chatId] = onSnapshot(doc(db, "chats", chatId), (chatSnap) => {
-                        const badge = document.getElementById(`badge-${f.uid}`);
-                        if(!badge || !chatSnap.exists()) return;
+                        const dotElement = document.getElementById(`dot-${f.uid}`);
+                        if(!dotElement || !chatSnap.exists()) return;
                         const chatData = chatSnap.data();
                         
-                        if(chatData.unread && chatData.lastMessageSender !== currentUser.uid && currentChatId !== chatId) badge.classList.remove('hidden');
-                        else {
-                            badge.classList.add('hidden');
-                            if(chatData.unread && chatData.lastMessageSender !== currentUser.uid && currentChatId === chatId) updateDoc(doc(db, "chats", chatId), { unread: false });
+                        // Check if unread AND the last message was sent by the other user
+                        if(chatData.unread && chatData.lastMessageSender !== currentUser.uid && currentChatId !== chatId) {
+                            dotElement.classList.add('active'); // Show the red dot
+                        } else {
+                            dotElement.classList.remove('active'); // Hide the red dot
+                            
+                            // If we click on the chat, tell Firestore to mark it as read
+                            if(chatData.unread && chatData.lastMessageSender !== currentUser.uid && currentChatId === chatId) {
+                                updateDoc(doc(db, "chats", chatId), { unread: false }).catch(e=>e);
+                            }
                         }
                     });
                 }

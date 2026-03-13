@@ -170,6 +170,35 @@
             50% { transform: scale(1.1); opacity: 1; text-shadow: 0 0 25px rgba(79, 70, 229, 0.6); }
             100% { transform: scale(1); opacity: 0.7; }
         }
+
+        /* --- ERROR POPUP (TOAST) --- */
+        .error-popup {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(239, 68, 68, 0.95); /* Vibrant Red */
+            backdrop-filter: blur(10px);
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            box-shadow: 0 10px 25px rgba(239, 68, 68, 0.3);
+            z-index: 10000;
+            transform: translateX(150%); /* Hidden off-screen by default */
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .error-popup.show {
+            transform: translateX(0); /* Slide in */
+        }
+
+        .error-icon {
+            font-size: 1.2rem;
+        }
     </style>
 </head>
 <body>
@@ -201,6 +230,11 @@
         <div class="animated-logo">Link<span>Up</span></div>
     </div>
 
+    <div id="error-popup" class="error-popup">
+        <span class="error-icon">⚠️</span>
+        <span id="error-message">An error occurred.</span>
+    </div>
+
     <script type="module">
         // 1. Import auth and your custom status function
         import { auth, updateUserStatus } from "./config.js";
@@ -208,39 +242,58 @@
 
         const loginForm = document.getElementById('login-form');
         const loginBtn = document.getElementById('login-btn');
+        const errorPopup = document.getElementById('error-popup');
+        const errorMessage = document.getElementById('error-message');
+
+        // Helper function to show errors
+        function showError(msg) {
+            errorMessage.innerText = msg;
+            errorPopup.classList.add('show');
+            // Hide it automatically after 3.5 seconds
+            setTimeout(() => {
+                errorPopup.classList.remove('show');
+            }, 3500);
+        }
 
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault(); 
             
-            const email = document.getElementById('login-email').value;
-            const password = document.getElementById('login-password').value;
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value.trim();
+
+            // 1. Check for empty fields FIRST
+            if (!email || !password) {
+                showError("Please fill in both email and password.");
+                return; // Stop the code here
+            }
 
             loginBtn.innerText = "Signing In...";
             loginBtn.disabled = true;
 
             try {
-                // A. Log the user in
                 const userCredential = await signInWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
                 
-                // B. Trigger your global online engine
                 await updateUserStatus(user.uid, true);
                 
-                // C. Redirect to the chat interface
-                
-                // Show the animated overlay
                 document.getElementById('loading-overlay').classList.add('active');
-
-                // Wait for 2 seconds (2000 milliseconds) to let the animation play, then redirect
                 setTimeout(() => {
-                    window.location.href = "chats.html";
-                }, 2000); 
+                    window.location.href = "chats.html"; 
+                }, 2000);
 
             } catch (error) {
                 console.error(error);
-                alert("Error logging in: " + error.message);
                 loginBtn.innerText = "Sign In";
                 loginBtn.disabled = false;
+
+                // 2. Handle specific Firebase errors with clean text
+                if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+                    showError("Invalid email or password. Please try again.");
+                } else if (error.code === 'auth/invalid-email') {
+                    showError("Please enter a valid email address.");
+                } else {
+                    showError("An error occurred: " + error.message);
+                }
             }
         });
     </script>

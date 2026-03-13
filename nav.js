@@ -22,8 +22,8 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
 
 
 import { auth, db } from "./config.js";
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { collection, query, where, onSnapshot, doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const currentPath = window.location.pathname;
 
@@ -126,5 +126,38 @@ onAuthStateChanged(auth, u => {
             unreadNotifs = snap.size;
             updateAlertBadge();
         });
+    }
+});
+
+// ==========================================
+// GLOBAL LOGOUT HANDLER (Works on any page)
+// ==========================================
+document.body.addEventListener('click', async (e) => {
+    // Check if the user clicked something with the ID 'logout-btn'
+    if (e.target.closest('#logout-btn')) {
+        e.preventDefault();
+        
+        if (auth.currentUser) {
+            try {
+                // 1. Set status to offline FIRST
+                await updateDoc(doc(db, "users", auth.currentUser.uid), {
+                    online: false,
+                    lastSeen: serverTimestamp()
+                });
+
+                // 2. Clear out the device session ID
+                localStorage.removeItem('linkup_device_id');
+
+                // 3. Actually sign out of Firebase
+                await signOut(auth);
+
+                // 4. Redirect back to login
+                window.location.href = "login.html";
+                
+            } catch (error) {
+                console.error("Error logging out:", error);
+                alert("Failed to log out properly.");
+            }
+        }
     }
 });
