@@ -6,17 +6,17 @@ import { doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebas
 // Your Firebase Configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyCLWbJAw5Le6Fqxq9THQFYqp2JL5WCPSxk",
-  authDomain: "weba-f5bc5.firebaseapp.com",
-  databaseURL: "https://weba-f5bc5-default-rtdb.firebaseio.com",
-  projectId: "weba-f5bc5",
-  storageBucket: "weba-f5bc5.firebasestorage.app",
-  messagingSenderId: "1054296497174",
-  appId: "1:1054296497174:web:a66dfdc7c0cd3772c1e937",
-  measurementId: "G-XVEJSERLYQ"
+  apiKey: "AIzaSyBQdNj_XsGkO1GJE4XEdG2j1tTrKabjhLg",
+  authDomain: "webapp-93d50.firebaseapp.com",
+  databaseURL: "https://webapp-93d50-default-rtdb.firebaseio.com",
+  projectId: "webapp-93d50",
+  storageBucket: "webapp-93d50.firebasestorage.app",
+  messagingSenderId: "412079172315",
+  appId: "1:412079172315:web:4d9f28e1941ad38547bafe",
+  measurementId: "G-EY8WSM5PZF"
 };
-
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
